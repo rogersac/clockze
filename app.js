@@ -368,9 +368,7 @@
     row.querySelector(".location-main").textContent = clock.name;
     row.querySelector(".location-meta").textContent = buildLocationMeta(clock);
     row.querySelector(".time-main").textContent = "--:--:--";
-    row.querySelector(".date-main").textContent = "--";
-    row.querySelector(".zone-abbr").textContent = clock.timezone || "";
-    row.querySelector(".zone-offset").textContent = "";
+    row.querySelector(".time-meta").textContent = clock.timezone || "";
 
     /*
       Future weather support:
@@ -386,9 +384,7 @@
     wrapper.innerHTML =
       '<article class="clock-row">' +
       '<div class="clock-col clock-col-location"><div class="location-main"></div><div class="location-meta"></div></div>' +
-      '<div class="clock-col clock-col-time"><div class="time-main"></div></div>' +
-      '<div class="clock-col clock-col-date"><div class="date-main"></div></div>' +
-      '<div class="clock-col clock-col-zone"><div class="zone-abbr"></div><div class="zone-offset"></div></div>' +
+      '<div class="clock-col clock-col-time"><div class="time-main"></div><div class="time-meta"></div></div>' +
       '<div class="clock-col clock-col-weather weather-slot"><div class="weather-placeholder">--</div><div class="weather-meta">Temp / High / Low / Icon</div></div>' +
       '<div class="clock-col clock-col-actions"><button class="remove-button" type="button">Remove</button></div>' +
       '</article>';
@@ -453,9 +449,7 @@
       timeParts = formatClockTime(now, clock.timezone, appState.use24Hour);
 
       row.querySelector(".time-main").textContent = timeParts.timeText;
-      row.querySelector(".date-main").textContent = timeParts.dateText;
-      row.querySelector(".zone-abbr").textContent = timeParts.zoneAbbreviation || clock.timezone;
-      row.querySelector(".zone-offset").textContent = timeParts.utcOffsetText;
+      row.querySelector(".time-meta").textContent = buildTimeMetaText(timeParts, clock);
     }
   }
 
@@ -464,10 +458,25 @@
 
     return {
       timeText: formatterSet.timeFormatter.format(date),
-      dateText: formatterSet.dateFormatter.format(date),
       zoneAbbreviation: extractZoneAbbreviation(formatterSet.zoneFormatter, date),
       utcOffsetText: formatUtcOffset(date, timeZone)
     };
+  }
+
+  function buildTimeMetaText(timeParts, clock) {
+    var pieces = [];
+
+    if (timeParts.zoneAbbreviation) {
+      pieces.push(timeParts.zoneAbbreviation);
+    } else if (clock.timezone) {
+      pieces.push(clock.timezone);
+    }
+
+    if (timeParts.utcOffsetText) {
+      pieces.push(timeParts.utcOffsetText);
+    }
+
+    return pieces.join(" | ");
   }
 
   function getFormatterSet(timeZone, use24Hour) {
@@ -482,13 +491,6 @@
             minute: "2-digit",
             second: "2-digit",
             hour12: !use24Hour
-          }),
-          dateFormatter: new Intl.DateTimeFormat("en-US", {
-            timeZone: timeZone,
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            year: "numeric"
           }),
           zoneFormatter: new Intl.DateTimeFormat("en-US", {
             timeZone: timeZone,
