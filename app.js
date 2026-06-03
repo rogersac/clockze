@@ -43,7 +43,6 @@
     citySearch: document.getElementById("city-search"),
     searchStatus: document.getElementById("search-status"),
     searchResults: document.getElementById("search-results"),
-    locationStatus: document.getElementById("location-status"),
     modalBackdrop: document.getElementById("modal-backdrop"),
     settingsModal: document.getElementById("settings-modal"),
     settingsClose: document.getElementById("settings-close"),
@@ -279,8 +278,6 @@
   function resolveDefaultClock() {
     var geo;
 
-    elements.locationStatus.textContent = "Finding your current location...";
-
     geo = navigator.geolocation;
     if (!geo || typeof geo.getCurrentPosition !== "function") {
       setDefaultClock(DEFAULT_CLOCK, "Using Nashville.");
@@ -367,7 +364,6 @@
   function setDefaultClock(clock, statusText, source) {
     appState.defaultClock = normalizeClock(clock);
     appState.defaultClockSource = source || "fallback";
-    elements.locationStatus.textContent = statusText || "";
     renderClocks();
   }
 
