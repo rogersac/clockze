@@ -106,6 +106,26 @@ input {
   margin-bottom: 8px;
 }
 
+.icon-button {
+  position: relative;
+  width: 48px;
+  min-width: 48px;
+  padding: 0;
+}
+
+.icon {
+  position: relative;
+  display: inline-block;
+}
+
+.icon-svg {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  color: var(--text);
+  vertical-align: middle;
+}
+
 .modal-close-button {
   min-height: 42px;
   padding: 0 14px;
