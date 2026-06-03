@@ -404,6 +404,7 @@ input {
 }
 
 .swipe-delete-layout .clock-row {
+  display: block;
   position: relative;
   overflow: hidden;
   padding: 0;
