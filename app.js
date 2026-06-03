@@ -1,0 +1,874 @@
+(function () {
+  "use strict";
+
+  var STORAGE_KEY_CLOCKS = "world-clocks-saved";
+  var STORAGE_KEY_FORMAT = "world-clocks-format-24";
+  var STORAGE_KEY_HIDE_CURRENT = "world-clocks-hide-current";
+  var DEFAULT_CLOCK = {
+    name: "Nashville",
+    admin1: "Tennessee",
+    country: "United States",
+    latitude: 36.1627,
+    longitude: -86.7816,
+    timezone: "America/Chicago"
+  };
+
+  var appState = {
+    defaultClock: cloneClock(DEFAULT_CLOCK),
+    defaultClockSource: "fallback",
+    hideCurrentLocationClock: false,
+    savedClocks: [],
+    use24Hour: false,
+    formatterCache: {},
+    tickTimer: null,
+    searchTimer: null,
+    searchRequest: null,
+    reverseGeocodeRequest: null
+  };
+
+  var elements = {
+    clockList: document.getElementById("clock-list"),
+    clockTemplate: document.getElementById("clock-row-template"),
+    timeFormatToggle: document.getElementById("time-format-toggle"),
+    resetButton: document.getElementById("reset-button"),
+    citySearch: document.getElementById("city-search"),
+    searchStatus: document.getElementById("search-status"),
+    searchResults: document.getElementById("search-results"),
+    locationStatus: document.getElementById("location-status")
+  };
+
+  // Boot from localStorage first so the app still works when APIs are unavailable.
+  function init() {
+    loadPreferences();
+    loadSavedClocks();
+    bindEvents();
+    renderClocks();
+    startClockUpdates();
+    resolveDefaultClock();
+  }
+
+  function bindEvents() {
+    elements.timeFormatToggle.checked = appState.use24Hour;
+    elements.timeFormatToggle.addEventListener("change", onTimeFormatChange, false);
+    elements.resetButton.addEventListener("click", onResetClick, false);
+    elements.citySearch.addEventListener("input", onSearchInput, false);
+  }
+
+  function loadPreferences() {
+    var storedFormat = readStorage(STORAGE_KEY_FORMAT);
+    var storedHideCurrent = readStorage(STORAGE_KEY_HIDE_CURRENT);
+    appState.use24Hour = storedFormat === "true";
+    appState.hideCurrentLocationClock = storedHideCurrent === "true";
+  }
+
+  function loadSavedClocks() {
+    var raw = readStorage(STORAGE_KEY_CLOCKS);
+    var parsed;
+    var i;
+    var cleaned = [];
+
+    if (!raw) {
+      appState.savedClocks = [];
+      return;
+    }
+
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      appState.savedClocks = [];
+      return;
+    }
+
+    if (!isArray(parsed)) {
+      appState.savedClocks = [];
+      return;
+    }
+
+    for (i = 0; i < parsed.length; i += 1) {
+      if (isValidClock(parsed[i])) {
+        cleaned.push(normalizeClock(parsed[i]));
+      }
+    }
+
+    appState.savedClocks = cleaned;
+  }
+
+  function onTimeFormatChange() {
+    appState.use24Hour = !!elements.timeFormatToggle.checked;
+    appState.formatterCache = {};
+    writeStorage(STORAGE_KEY_FORMAT, String(appState.use24Hour));
+    updateRenderedTimes();
+  }
+
+  function onResetClick() {
+    abortRequest(appState.searchRequest);
+    abortRequest(appState.reverseGeocodeRequest);
+    appState.searchRequest = null;
+    appState.reverseGeocodeRequest = null;
+    appState.savedClocks = [];
+    appState.defaultClockSource = "fallback";
+    appState.hideCurrentLocationClock = false;
+    writeStorage(STORAGE_KEY_CLOCKS, JSON.stringify([]));
+    writeStorage(STORAGE_KEY_HIDE_CURRENT, "false");
+    clearSearchResults();
+    elements.citySearch.value = "";
+    setSearchStatus("");
+    renderClocks();
+    resolveDefaultClock();
+  }
+
+  function onSearchInput() {
+    var query = trimString(elements.citySearch.value);
+
+    if (appState.searchTimer) {
+      clearTimeout(appState.searchTimer);
+      appState.searchTimer = null;
+    }
+
+    if (query.length < 3) {
+      abortRequest(appState.searchRequest);
+      appState.searchRequest = null;
+      clearSearchResults();
+      setSearchStatus(query.length === 0 ? "" : "Type at least 3 characters to search.");
+      return;
+    }
+
+    setSearchStatus("Searching...");
+    appState.searchTimer = setTimeout(function () {
+      appState.searchTimer = null;
+      searchCities(query);
+    }, 300);
+  }
+
+  function searchCities(query) {
+    var url = "https://geocoding-api.open-meteo.com/v1/search?name=" +
+      encodeURIComponent(query) +
+      "&count=10&language=en&format=json";
+
+    abortRequest(appState.searchRequest);
+
+    appState.searchRequest = createJsonRequest(url, function (error, data) {
+      appState.searchRequest = null;
+
+      if (error) {
+        clearSearchResults();
+        setSearchStatus("City search is unavailable right now. Try again later.", true);
+        return;
+      }
+
+      renderSearchResults(data && data.results ? data.results : []);
+    });
+  }
+
+  function renderSearchResults(results) {
+    var i;
+    var item;
+    var listItem;
+    var button;
+    var name;
+    var meta;
+    var resultClock;
+
+    clearSearchResults();
+
+    if (!results || !results.length) {
+      setSearchStatus("No cities found.");
+      return;
+    }
+
+    setSearchStatus("Select a city to add its clock.");
+
+    for (i = 0; i < results.length; i += 1) {
+      item = results[i];
+      listItem = document.createElement("li");
+      button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("data-index", String(i));
+
+      name = document.createElement("span");
+      name.className = "result-name";
+      name.appendChild(document.createTextNode(buildLocationTitle(item)));
+
+      meta = document.createElement("span");
+      meta.className = "result-meta";
+      meta.appendChild(document.createTextNode(buildResultMeta(item)));
+
+      button.appendChild(name);
+      button.appendChild(meta);
+
+      resultClock = normalizeClock({
+        name: item.name || "Unknown",
+        admin1: item.admin1 || "",
+        country: item.country || "",
+        latitude: item.latitude,
+        longitude: item.longitude,
+        timezone: item.timezone || ""
+      });
+
+      attachClockData(button, resultClock);
+
+      button.addEventListener("click", onSearchResultClick, false);
+      listItem.appendChild(button);
+      elements.searchResults.appendChild(listItem);
+    }
+  }
+
+  function onSearchResultClick(event) {
+    var clock = readClockData(event.currentTarget);
+
+    if (!clock) {
+      return;
+    }
+
+    if (hasClock(clock)) {
+      setSearchStatus("That clock is already shown.");
+      clearSearchResults();
+      return;
+    }
+
+    appState.savedClocks.push(clock);
+    persistSavedClocks();
+    renderClocks();
+    clearSearchResults();
+    elements.citySearch.value = "";
+    setSearchStatus("Clock added.");
+  }
+
+  function resolveDefaultClock() {
+    var geo;
+
+    elements.locationStatus.textContent = "Finding your current location...";
+
+    geo = navigator.geolocation;
+    if (!geo || typeof geo.getCurrentPosition !== "function") {
+      setDefaultClock(DEFAULT_CLOCK, "Using Nashville.");
+      return;
+    }
+
+    geo.getCurrentPosition(
+      function (position) {
+        useCurrentPosition(position);
+      },
+      function () {
+        setDefaultClock(DEFAULT_CLOCK, "Using Nashville.");
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 6000,
+        maximumAge: 300000
+      }
+    );
+  }
+
+  // Show a usable local clock immediately, then try to replace its label with a city name.
+  function useCurrentPosition(position) {
+    var latitude = position && position.coords ? position.coords.latitude : null;
+    var longitude = position && position.coords ? position.coords.longitude : null;
+    var browserZone = getBrowserTimeZone() || DEFAULT_CLOCK.timezone;
+    var fallbackClock;
+
+    if (typeof latitude !== "number" || typeof longitude !== "number") {
+      setDefaultClock(DEFAULT_CLOCK, "Using Nashville.");
+      return;
+    }
+
+    fallbackClock = normalizeClock({
+      name: "Current Location",
+      admin1: "",
+      country: "",
+      latitude: latitude,
+      longitude: longitude,
+      timezone: browserZone
+    });
+
+    setDefaultClock(fallbackClock, "Using your current location.", "current");
+
+    reverseGeocodeCurrentLocation(latitude, longitude, browserZone);
+  }
+
+  function reverseGeocodeCurrentLocation(latitude, longitude, browserZone) {
+    var url = "https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&addressdetails=1&lat=" +
+      encodeURIComponent(String(latitude)) +
+      "&lon=" +
+      encodeURIComponent(String(longitude));
+
+    abortRequest(appState.reverseGeocodeRequest);
+
+    appState.reverseGeocodeRequest = createJsonRequest(url, function (error, data) {
+      var address;
+      var updatedClock;
+
+      appState.reverseGeocodeRequest = null;
+
+      if (error || !data) {
+        return;
+      }
+
+      address = data.address || {};
+      updatedClock = normalizeClock({
+        name: address.city || address.town || address.village || address.municipality || "Current Location",
+        admin1: address.state || address.region || "",
+        country: address.country || "",
+        latitude: latitude,
+        longitude: longitude,
+        timezone: browserZone
+      });
+
+      setDefaultClock(
+        updatedClock,
+        updatedClock.name === "Current Location" ? "Using your current location." : "Showing your current city.",
+        "current"
+      );
+    });
+  }
+
+  function setDefaultClock(clock, statusText, source) {
+    appState.defaultClock = normalizeClock(clock);
+    appState.defaultClockSource = source || "fallback";
+    elements.locationStatus.textContent = statusText || "";
+    renderClocks();
+  }
+
+  function persistSavedClocks() {
+    writeStorage(STORAGE_KEY_CLOCKS, JSON.stringify(appState.savedClocks));
+  }
+
+  function renderClocks() {
+    var fragment = document.createDocumentFragment();
+    var combinedClocks = getVisibleClocks();
+    var i;
+    var row;
+
+    elements.clockList.innerHTML = "";
+
+    for (i = 0; i < combinedClocks.length; i += 1) {
+      row = createClockRow(combinedClocks[i], i === 0);
+      fragment.appendChild(row);
+    }
+
+    elements.clockList.appendChild(fragment);
+    updateRenderedTimes();
+  }
+
+  function createClockRow(clock, isDefault) {
+    var row = elements.clockTemplate.content ?
+      elements.clockTemplate.content.firstElementChild.cloneNode(true) :
+      createFallbackTemplateClone();
+    var removeButton = row.querySelector(".remove-button");
+
+    row.setAttribute("data-timezone", clock.timezone);
+
+    if (isDefault) {
+      configureDefaultClockButton(removeButton, clock);
+    } else {
+      attachClockData(removeButton, clock);
+      removeButton.addEventListener("click", onRemoveClockClick, false);
+    }
+
+    row.querySelector(".location-main").textContent = clock.name;
+    row.querySelector(".location-meta").textContent = buildLocationMeta(clock);
+    row.querySelector(".time-main").textContent = "--:--:--";
+    row.querySelector(".date-main").textContent = "--";
+    row.querySelector(".zone-abbr").textContent = clock.timezone || "";
+    row.querySelector(".zone-offset").textContent = "";
+
+    /*
+      Future weather support:
+      - Fetch weather data from the Open-Meteo Forecast API with the clock latitude/longitude.
+      - Populate current temperature, daily high, daily low, and a weather condition icon here.
+    */
+
+    return row;
+  }
+
+  function createFallbackTemplateClone() {
+    var wrapper = document.createElement("div");
+    wrapper.innerHTML =
+      '<article class="clock-row">' +
+      '<div class="clock-col clock-col-location"><div class="location-main"></div><div class="location-meta"></div></div>' +
+      '<div class="clock-col clock-col-time"><div class="time-main"></div></div>' +
+      '<div class="clock-col clock-col-date"><div class="date-main"></div></div>' +
+      '<div class="clock-col clock-col-zone"><div class="zone-abbr"></div><div class="zone-offset"></div></div>' +
+      '<div class="clock-col clock-col-weather weather-slot"><div class="weather-placeholder">--</div><div class="weather-meta">Temp / High / Low / Icon</div></div>' +
+      '<div class="clock-col clock-col-actions"><button class="remove-button" type="button">Remove</button></div>' +
+      '</article>';
+    return wrapper.firstChild;
+  }
+
+  function onRemoveClockClick(event) {
+    var clock = readClockData(event.currentTarget);
+    var updatedClocks = [];
+    var i;
+    var existing;
+
+    if (!clock) {
+      return;
+    }
+
+    for (i = 0; i < appState.savedClocks.length; i += 1) {
+      existing = appState.savedClocks[i];
+      if (clockKey(existing) !== clockKey(clock)) {
+        updatedClocks.push(existing);
+      }
+    }
+
+    appState.savedClocks = updatedClocks;
+    persistSavedClocks();
+    renderClocks();
+  }
+
+  function onRemoveDefaultClockClick() {
+    appState.hideCurrentLocationClock = true;
+    writeStorage(STORAGE_KEY_HIDE_CURRENT, "true");
+    renderClocks();
+  }
+
+  function startClockUpdates() {
+    if (appState.tickTimer) {
+      clearInterval(appState.tickTimer);
+    }
+
+    appState.tickTimer = setInterval(function () {
+      updateRenderedTimes();
+    }, 1000);
+  }
+
+  function updateRenderedTimes() {
+    var rows = elements.clockList.getElementsByClassName("clock-row");
+    var combinedClocks = getVisibleClocks();
+    var now = new Date();
+    var i;
+    var row;
+    var clock;
+    var timeParts;
+
+    for (i = 0; i < rows.length; i += 1) {
+      row = rows[i];
+      clock = combinedClocks[i];
+
+      if (!clock) {
+        continue;
+      }
+
+      timeParts = formatClockTime(now, clock.timezone, appState.use24Hour);
+
+      row.querySelector(".time-main").textContent = timeParts.timeText;
+      row.querySelector(".date-main").textContent = timeParts.dateText;
+      row.querySelector(".zone-abbr").textContent = timeParts.zoneAbbreviation || clock.timezone;
+      row.querySelector(".zone-offset").textContent = timeParts.utcOffsetText;
+    }
+  }
+
+  function formatClockTime(date, timeZone, use24Hour) {
+    var formatterSet = getFormatterSet(timeZone, use24Hour);
+
+    return {
+      timeText: formatterSet.timeFormatter.format(date),
+      dateText: formatterSet.dateFormatter.format(date),
+      zoneAbbreviation: extractZoneAbbreviation(formatterSet.zoneFormatter, date),
+      utcOffsetText: formatUtcOffset(date, timeZone)
+    };
+  }
+
+  function getFormatterSet(timeZone, use24Hour) {
+    var cacheKey = timeZone + "|" + (use24Hour ? "24" : "12");
+
+    if (!appState.formatterCache[cacheKey]) {
+      try {
+        appState.formatterCache[cacheKey] = {
+          timeFormatter: new Intl.DateTimeFormat("en-US", {
+            timeZone: timeZone,
+            hour: "numeric",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: !use24Hour
+          }),
+          dateFormatter: new Intl.DateTimeFormat("en-US", {
+            timeZone: timeZone,
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            year: "numeric"
+          }),
+          zoneFormatter: new Intl.DateTimeFormat("en-US", {
+            timeZone: timeZone,
+            timeZoneName: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false
+          }),
+          offsetFormatter: new Intl.DateTimeFormat("en-US", {
+            timeZone: timeZone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false
+          })
+        };
+      } catch (error) {
+        return getFormatterSet(DEFAULT_CLOCK.timezone, use24Hour);
+      }
+    }
+
+    return appState.formatterCache[cacheKey];
+  }
+
+  function extractZoneAbbreviation(formatter, date) {
+    var parts;
+    var i;
+
+    if (typeof formatter.formatToParts !== "function") {
+      return "";
+    }
+
+    parts = formatter.formatToParts(date);
+    for (i = 0; i < parts.length; i += 1) {
+      if (parts[i].type === "timeZoneName") {
+        return parts[i].value;
+      }
+    }
+
+    return "";
+  }
+
+  function formatUtcOffset(date, timeZone) {
+    var offsetMinutes = getOffsetMinutes(date, timeZone);
+    var sign = offsetMinutes >= 0 ? "+" : "-";
+    var absoluteMinutes = Math.abs(offsetMinutes);
+    var hours = Math.floor(absoluteMinutes / 60);
+    var minutes = absoluteMinutes % 60;
+
+    return "UTC" + sign + padNumber(hours) + ":" + padNumber(minutes);
+  }
+
+  function getOffsetMinutes(date, timeZone) {
+    var formatter = getFormatterSet(timeZone, appState.use24Hour).offsetFormatter;
+    var parts;
+    var map = {};
+    var i;
+    var utcTime;
+    var hourValue;
+
+    if (typeof formatter.formatToParts !== "function") {
+      return 0;
+    }
+
+    parts = formatter.formatToParts(date);
+    for (i = 0; i < parts.length; i += 1) {
+      if (parts[i].type !== "literal") {
+        map[parts[i].type] = parts[i].value;
+      }
+    }
+
+    hourValue = parseInt(map.hour, 10);
+    if (hourValue === 24) {
+      hourValue = 0;
+    }
+
+    utcTime = Date.UTC(
+      parseInt(map.year, 10),
+      parseInt(map.month, 10) - 1,
+      parseInt(map.day, 10),
+      hourValue,
+      parseInt(map.minute, 10),
+      parseInt(map.second, 10)
+    );
+
+    return Math.round((utcTime - date.getTime()) / 60000);
+  }
+
+  function hasClock(clock) {
+    var allClocks = getVisibleClocks();
+    var i;
+
+    for (i = 0; i < allClocks.length; i += 1) {
+      if (clockKey(allClocks[i]) === clockKey(clock)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function clockKey(clock) {
+    return [
+      safeLower(clock.name),
+      safeLower(clock.admin1),
+      safeLower(clock.country),
+      normalizeCoordinate(clock.latitude),
+      normalizeCoordinate(clock.longitude),
+      safeLower(clock.timezone)
+    ].join("|");
+  }
+
+  function normalizeClock(source) {
+    return {
+      name: source.name || "Unknown",
+      admin1: source.admin1 || "",
+      country: source.country || "",
+      latitude: parseFloat(source.latitude),
+      longitude: parseFloat(source.longitude),
+      timezone: source.timezone || DEFAULT_CLOCK.timezone
+    };
+  }
+
+  function cloneClock(clock) {
+    return normalizeClock(clock);
+  }
+
+  function isValidClock(clock) {
+    if (!clock || typeof clock !== "object") {
+      return false;
+    }
+
+    if (typeof clock.name !== "string" || typeof clock.timezone !== "string") {
+      return false;
+    }
+
+    if (isNaN(parseFloat(clock.latitude)) || isNaN(parseFloat(clock.longitude))) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function buildLocationTitle(item) {
+    var parts = [item.name || "Unknown"];
+
+    if (item.admin1) {
+      parts.push(item.admin1);
+    }
+
+    if (item.country) {
+      parts.push(item.country);
+    }
+
+    return parts.join(", ");
+  }
+
+  function buildResultMeta(item) {
+    var pieces = [];
+
+    if (item.admin1) {
+      pieces.push(item.admin1);
+    }
+
+    if (item.country) {
+      pieces.push(item.country);
+    }
+
+    if (item.timezone) {
+      pieces.push(item.timezone);
+    }
+
+    return pieces.join(" | ");
+  }
+
+  function buildLocationMeta(clock) {
+    var pieces = [];
+
+    if (clock.admin1) {
+      pieces.push(clock.admin1);
+    }
+
+    if (clock.country) {
+      pieces.push(clock.country);
+    }
+
+    return pieces.join(", ") || clock.timezone;
+  }
+
+  function configureDefaultClockButton(removeButton, clock) {
+    rowAddDefaultClass(removeButton);
+    attachClockData(removeButton, clock);
+    removeButton.textContent = "Remove";
+    removeButton.disabled = false;
+    removeButton.addEventListener("click", onRemoveDefaultClockClick, false);
+  }
+
+  function rowAddDefaultClass(removeButton) {
+    var row = findParentClockRow(removeButton);
+
+    if (row && row.className.indexOf("is-default") === -1) {
+      row.className += " is-default";
+    }
+  }
+
+  function findParentClockRow(element) {
+    var current = element;
+
+    while (current && current.nodeType === 1) {
+      if (current.className && String(current.className).indexOf("clock-row") !== -1) {
+        return current;
+      }
+      current = current.parentNode;
+    }
+
+    return null;
+  }
+
+  function shouldShowDefaultClock() {
+    if (appState.hideCurrentLocationClock) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function getVisibleClocks() {
+    var clocks = [];
+
+    if (shouldShowDefaultClock()) {
+      clocks.push(appState.defaultClock);
+    }
+
+    return clocks.concat(appState.savedClocks);
+  }
+
+  function setSearchStatus(message, isError) {
+    elements.searchStatus.className = isError ? "search-status error" : "search-status";
+    elements.searchStatus.textContent = message;
+  }
+
+  function clearSearchResults() {
+    elements.searchResults.innerHTML = "";
+  }
+
+  function createJsonRequest(url, callback) {
+    var xhr = new XMLHttpRequest();
+    var isAborted = false;
+
+    xhr.open("GET", url, true);
+    xhr.timeout = 8000;
+    xhr.onreadystatechange = function () {
+      var response;
+
+      if (xhr.readyState !== 4 || isAborted) {
+        return;
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          response = JSON.parse(xhr.responseText);
+        } catch (error) {
+          callback(error);
+          return;
+        }
+
+        callback(null, response);
+        return;
+      }
+
+      callback(new Error("Request failed"));
+    };
+
+    xhr.onerror = function () {
+      if (isAborted) {
+        return;
+      }
+      callback(new Error("Network error"));
+    };
+
+    xhr.ontimeout = function () {
+      if (isAborted) {
+        return;
+      }
+      callback(new Error("Request timed out"));
+    };
+
+    xhr._abortSafely = function () {
+      isAborted = true;
+      xhr.abort();
+    };
+
+    xhr.send();
+    return xhr;
+  }
+
+  function abortRequest(xhr) {
+    if (xhr && typeof xhr._abortSafely === "function") {
+      try {
+        xhr._abortSafely();
+      } catch (error) {
+        return;
+      }
+    }
+  }
+
+  function getBrowserTimeZone() {
+    var resolvedOptions;
+
+    try {
+      resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
+      return resolvedOptions && resolvedOptions.timeZone ? resolvedOptions.timeZone : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function attachClockData(element, clock) {
+    element.setAttribute("data-clock", JSON.stringify(clock));
+  }
+
+  function readClockData(element) {
+    var raw = element.getAttribute("data-clock");
+
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      return normalizeClock(JSON.parse(raw));
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function readStorage(key) {
+    try {
+      return window.localStorage.getItem(key);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeStorage(key, value) {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function normalizeCoordinate(value) {
+    var numberValue = parseFloat(value);
+
+    if (isNaN(numberValue)) {
+      return "";
+    }
+
+    return numberValue.toFixed(4);
+  }
+
+  function padNumber(value) {
+    return value < 10 ? "0" + value : String(value);
+  }
+
+  function trimString(value) {
+    return String(value || "").replace(/^\s+|\s+$/g, "");
+  }
+
+  function safeLower(value) {
+    return String(value || "").toLowerCase();
+  }
+
+  function isArray(value) {
+    return Object.prototype.toString.call(value) === "[object Array]";
+  }
+
+  init();
+}());

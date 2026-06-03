@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1118">
+  <title>World Clocks</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <main class="content">
+      <section class="controls" aria-labelledby="search-title">
+        <div class="controls-heading">
+          <h2 id="search-title">Add a city</h2>
+          <p>Search after 3 or more characters.</p>
+        </div>
+
+        <div class="search-panel">
+          <label class="sr-only" for="city-search">Search for a city</label>
+          <input
+            id="city-search"
+            type="text"
+            inputmode="search"
+            autocomplete="off"
+            placeholder="Search city name"
+            aria-describedby="search-status"
+          >
+          <div id="search-status" class="search-status" aria-live="polite"></div>
+          <ul id="search-results" class="search-results" aria-label="Matching cities"></ul>
+        </div>
+      </section>
+
+      <section class="clocks-section" aria-labelledby="clocks-title">
+        <div class="section-heading">
+          <div class="section-heading-copy">
+            <h2 id="clocks-title">Clocks</h2>
+            <p id="location-status" class="muted" aria-live="polite"></p>
+          </div>
+
+          <div class="section-heading-actions">
+            <label class="toggle-group" for="time-format-toggle">
+              <span>24-hour time</span>
+              <input id="time-format-toggle" type="checkbox" aria-label="Toggle 24-hour time">
+            </label>
+
+            <button id="reset-button" class="ghost-button" type="button">Reset</button>
+          </div>
+        </div>
+
+        <div class="clock-header" aria-hidden="true">
+          <div class="clock-col clock-col-location">Location</div>
+          <div class="clock-col clock-col-time">Current Time</div>
+          <div class="clock-col clock-col-date">Date</div>
+          <div class="clock-col clock-col-zone">Zone</div>
+          <div class="clock-col clock-col-weather">Weather</div>
+          <div class="clock-col clock-col-actions">Action</div>
+        </div>
+
+        <div id="clock-list" class="clock-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <template id="clock-row-template">
+    <article class="clock-row">
+      <div class="clock-col clock-col-location">
+        <div class="location-main"></div>
+        <div class="location-meta"></div>
+      </div>
+
+      <div class="clock-col clock-col-time">
+        <div class="time-main"></div>
+      </div>
+
+      <div class="clock-col clock-col-date">
+        <div class="date-main"></div>
+      </div>
+
+      <div class="clock-col clock-col-zone">
+        <div class="zone-abbr"></div>
+        <div class="zone-offset"></div>
+      </div>
+
+      <div class="clock-col clock-col-weather weather-slot">
+        <div class="weather-placeholder">--</div>
+        <div class="weather-meta">Temp / High / Low / Icon</div>
+      </div>
+
+      <div class="clock-col clock-col-actions">
+        <button class="remove-button" type="button">Remove</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
