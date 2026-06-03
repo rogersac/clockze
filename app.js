@@ -5,6 +5,7 @@
   var STORAGE_KEY_FORMAT = "world-clocks-format-24";
   var STORAGE_KEY_SECONDS = "world-clocks-show-seconds";
   var STORAGE_KEY_WEATHER = "world-clocks-show-weather";
+  var STORAGE_KEY_DATE = "world-clocks-show-date";
   var STORAGE_KEY_LOCATION_META = "world-clocks-show-location-meta";
   var STORAGE_KEY_TIME_META = "world-clocks-show-time-meta";
   var STORAGE_KEY_HIDE_CURRENT = "world-clocks-hide-current";
@@ -26,6 +27,7 @@
     use24Hour: false,
     showSeconds: false,
     showWeather: false,
+    showDate: false,
     showLocationMeta: true,
     showTimeMeta: true,
     useSwipeLayout: false,
@@ -57,6 +59,7 @@
     setting24Hour: document.getElementById("setting-24-hour"),
     settingSeconds: document.getElementById("setting-seconds"),
     settingWeather: document.getElementById("setting-weather"),
+    settingDate: document.getElementById("setting-date"),
     settingLocationMeta: document.getElementById("setting-location-meta"),
     settingTimeMeta: document.getElementById("setting-time-meta")
   };
@@ -82,6 +85,7 @@
     elements.setting24Hour.addEventListener("change", onSettingsChange, false);
     elements.settingSeconds.addEventListener("change", onSettingsChange, false);
     elements.settingWeather.addEventListener("change", onSettingsChange, false);
+    elements.settingDate.addEventListener("change", onSettingsChange, false);
     elements.settingLocationMeta.addEventListener("change", onSettingsChange, false);
     elements.settingTimeMeta.addEventListener("change", onSettingsChange, false);
     elements.addCityClose.addEventListener("click", closeActiveModal, false);
@@ -95,12 +99,14 @@
     var storedFormat = readStorage(STORAGE_KEY_FORMAT);
     var storedSeconds = readStorage(STORAGE_KEY_SECONDS);
     var storedWeather = readStorage(STORAGE_KEY_WEATHER);
+    var storedDate = readStorage(STORAGE_KEY_DATE);
     var storedLocationMeta = readStorage(STORAGE_KEY_LOCATION_META);
     var storedTimeMeta = readStorage(STORAGE_KEY_TIME_META);
     var storedHideCurrent = readStorage(STORAGE_KEY_HIDE_CURRENT);
     appState.use24Hour = storedFormat === "true";
     appState.showSeconds = storedSeconds === "true";
     appState.showWeather = storedWeather === "true";
+    appState.showDate = storedDate === "true";
     appState.showLocationMeta = storedLocationMeta !== "false";
     appState.showTimeMeta = storedTimeMeta !== "false";
     appState.hideCurrentLocationClock = storedHideCurrent === "true";
@@ -142,12 +148,14 @@
     appState.use24Hour = !!elements.setting24Hour.checked;
     appState.showSeconds = !!elements.settingSeconds.checked;
     appState.showWeather = !!elements.settingWeather.checked;
+    appState.showDate = !!elements.settingDate.checked;
     appState.showLocationMeta = !!elements.settingLocationMeta.checked;
     appState.showTimeMeta = !!elements.settingTimeMeta.checked;
     appState.formatterCache = {};
     writeStorage(STORAGE_KEY_FORMAT, String(appState.use24Hour));
     writeStorage(STORAGE_KEY_SECONDS, String(appState.showSeconds));
     writeStorage(STORAGE_KEY_WEATHER, String(appState.showWeather));
+    writeStorage(STORAGE_KEY_DATE, String(appState.showDate));
     writeStorage(STORAGE_KEY_LOCATION_META, String(appState.showLocationMeta));
     writeStorage(STORAGE_KEY_TIME_META, String(appState.showTimeMeta));
     applyDisplaySettings();
@@ -165,6 +173,7 @@
     appState.use24Hour = false;
     appState.showSeconds = false;
     appState.showWeather = false;
+    appState.showDate = false;
     appState.showLocationMeta = true;
     appState.showTimeMeta = true;
     appState.formatterCache = {};
@@ -172,6 +181,7 @@
     writeStorage(STORAGE_KEY_FORMAT, "false");
     writeStorage(STORAGE_KEY_SECONDS, "false");
     writeStorage(STORAGE_KEY_WEATHER, "false");
+    writeStorage(STORAGE_KEY_DATE, "false");
     writeStorage(STORAGE_KEY_LOCATION_META, "true");
     writeStorage(STORAGE_KEY_TIME_META, "true");
     writeStorage(STORAGE_KEY_HIDE_CURRENT, "false");
@@ -438,6 +448,7 @@
     row.querySelector(".location-meta").textContent = buildLocationMeta(clock);
     row.querySelector(".time-main").textContent = "--:--:--";
     row.querySelector(".time-meta").textContent = clock.timezone || "";
+    row.querySelector(".date-main").textContent = "--";
 
     /*
       Future weather support:
@@ -456,6 +467,7 @@
       '<div class="clock-row-inner">' +
       '<div class="clock-col clock-col-location"><div class="location-main"></div><div class="location-meta"></div></div>' +
       '<div class="clock-col clock-col-time"><div class="time-main"></div><div class="time-meta"></div></div>' +
+      '<div class="clock-col clock-col-date"><div class="date-main"></div></div>' +
       '<div class="clock-col clock-col-weather weather-slot"><div class="weather-placeholder">--</div><div class="weather-meta">Temp / High / Low / Icon</div></div>' +
       '<div class="clock-col clock-col-actions"><button class="remove-button" type="button">Remove</button></div>' +
       '</div>' +
@@ -653,6 +665,7 @@
 
       row.querySelector(".time-main").textContent = timeParts.timeText;
       row.querySelector(".time-meta").textContent = buildTimeMetaText(timeParts, clock);
+      row.querySelector(".date-main").textContent = timeParts.dateText;
     }
   }
 
@@ -661,6 +674,7 @@
 
     return {
       timeText: formatterSet.timeFormatter.format(date),
+      dateText: formatterSet.dateFormatter.format(date),
       zoneAbbreviation: extractZoneAbbreviation(formatterSet.zoneFormatter, date),
       utcOffsetText: formatUtcOffset(date, timeZone)
     };
@@ -701,6 +715,13 @@
 
         appState.formatterCache[cacheKey] = {
           timeFormatter: new Intl.DateTimeFormat("en-US", timeOptions),
+          dateFormatter: new Intl.DateTimeFormat("en-US", {
+            timeZone: timeZone,
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            year: "numeric"
+          }),
           zoneFormatter: new Intl.DateTimeFormat("en-US", {
             timeZone: timeZone,
             timeZoneName: "short",
@@ -940,6 +961,7 @@
     elements.setting24Hour.checked = appState.use24Hour;
     elements.settingSeconds.checked = appState.showSeconds;
     elements.settingWeather.checked = appState.showWeather;
+    elements.settingDate.checked = appState.showDate;
     elements.settingLocationMeta.checked = appState.showLocationMeta;
     elements.settingTimeMeta.checked = appState.showTimeMeta;
   }
@@ -949,6 +971,12 @@
       removeClass(elements.appShell, "hide-weather");
     } else {
       addClass(elements.appShell, "hide-weather");
+    }
+
+    if (appState.showDate) {
+      removeClass(elements.appShell, "hide-date");
+    } else {
+      addClass(elements.appShell, "hide-date");
     }
 
     if (appState.showLocationMeta) {
