@@ -424,6 +424,7 @@
     elements.clockList.appendChild(fragment);
     bindSwipeRows();
     updateRenderedTimes();
+    applyMetaVisibility();
   }
 
   function createClockRow(clock, isDefault) {
@@ -989,6 +990,22 @@
       removeClass(elements.appShell, "hide-time-meta");
     } else {
       addClass(elements.appShell, "hide-time-meta");
+    }
+
+    applyMetaVisibility();
+  }
+
+  function applyMetaVisibility() {
+    var locationMetaNodes = elements.clockList.getElementsByClassName("location-meta");
+    var timeMetaNodes = elements.clockList.getElementsByClassName("time-meta");
+    var i;
+
+    for (i = 0; i < locationMetaNodes.length; i += 1) {
+      locationMetaNodes[i].style.display = appState.showLocationMeta ? "" : "none";
+    }
+
+    for (i = 0; i < timeMetaNodes.length; i += 1) {
+      timeMetaNodes[i].style.display = appState.showTimeMeta ? "" : "none";
     }
   }
 
