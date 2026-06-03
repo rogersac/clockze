@@ -3,6 +3,8 @@
 
   var STORAGE_KEY_CLOCKS = "world-clocks-saved";
   var STORAGE_KEY_FORMAT = "world-clocks-format-24";
+  var STORAGE_KEY_SECONDS = "world-clocks-show-seconds";
+  var STORAGE_KEY_WEATHER = "world-clocks-show-weather";
   var STORAGE_KEY_HIDE_CURRENT = "world-clocks-hide-current";
   var DEFAULT_CLOCK = {
     name: "Nashville",
@@ -19,22 +21,32 @@
     hideCurrentLocationClock: false,
     savedClocks: [],
     use24Hour: false,
+    showSeconds: true,
+    showWeather: true,
     formatterCache: {},
     tickTimer: null,
     searchTimer: null,
     searchRequest: null,
-    reverseGeocodeRequest: null
+    reverseGeocodeRequest: null,
+    lastFocusedElement: null
   };
 
   var elements = {
+    appShell: document.querySelector(".app-shell"),
     clockList: document.getElementById("clock-list"),
     clockTemplate: document.getElementById("clock-row-template"),
-    timeFormatToggle: document.getElementById("time-format-toggle"),
+    settingsButton: document.getElementById("settings-button"),
     resetButton: document.getElementById("reset-button"),
     citySearch: document.getElementById("city-search"),
     searchStatus: document.getElementById("search-status"),
     searchResults: document.getElementById("search-results"),
-    locationStatus: document.getElementById("location-status")
+    locationStatus: document.getElementById("location-status"),
+    modalBackdrop: document.getElementById("modal-backdrop"),
+    settingsModal: document.getElementById("settings-modal"),
+    settingsClose: document.getElementById("settings-close"),
+    setting24Hour: document.getElementById("setting-24-hour"),
+    settingSeconds: document.getElementById("setting-seconds"),
+    settingWeather: document.getElementById("setting-weather")
   };
 
   // Boot from localStorage first so the app still works when APIs are unavailable.
@@ -48,16 +60,27 @@
   }
 
   function bindEvents() {
-    elements.timeFormatToggle.checked = appState.use24Hour;
-    elements.timeFormatToggle.addEventListener("change", onTimeFormatChange, false);
+    syncSettingsInputs();
+    applyDisplaySettings();
+    elements.settingsButton.addEventListener("click", openSettingsModal, false);
     elements.resetButton.addEventListener("click", onResetClick, false);
     elements.citySearch.addEventListener("input", onSearchInput, false);
+    elements.setting24Hour.addEventListener("change", onSettingsChange, false);
+    elements.settingSeconds.addEventListener("change", onSettingsChange, false);
+    elements.settingWeather.addEventListener("change", onSettingsChange, false);
+    elements.settingsClose.addEventListener("click", closeSettingsModal, false);
+    elements.modalBackdrop.addEventListener("click", closeSettingsModal, false);
+    document.addEventListener("keydown", onDocumentKeyDown, false);
   }
 
   function loadPreferences() {
     var storedFormat = readStorage(STORAGE_KEY_FORMAT);
+    var storedSeconds = readStorage(STORAGE_KEY_SECONDS);
+    var storedWeather = readStorage(STORAGE_KEY_WEATHER);
     var storedHideCurrent = readStorage(STORAGE_KEY_HIDE_CURRENT);
     appState.use24Hour = storedFormat === "true";
+    appState.showSeconds = storedSeconds !== "false";
+    appState.showWeather = storedWeather !== "false";
     appState.hideCurrentLocationClock = storedHideCurrent === "true";
   }
 
@@ -93,10 +116,15 @@
     appState.savedClocks = cleaned;
   }
 
-  function onTimeFormatChange() {
-    appState.use24Hour = !!elements.timeFormatToggle.checked;
+  function onSettingsChange() {
+    appState.use24Hour = !!elements.setting24Hour.checked;
+    appState.showSeconds = !!elements.settingSeconds.checked;
+    appState.showWeather = !!elements.settingWeather.checked;
     appState.formatterCache = {};
     writeStorage(STORAGE_KEY_FORMAT, String(appState.use24Hour));
+    writeStorage(STORAGE_KEY_SECONDS, String(appState.showSeconds));
+    writeStorage(STORAGE_KEY_WEATHER, String(appState.showWeather));
+    applyDisplaySettings();
     updateRenderedTimes();
   }
 
@@ -108,11 +136,20 @@
     appState.savedClocks = [];
     appState.defaultClockSource = "fallback";
     appState.hideCurrentLocationClock = false;
+    appState.use24Hour = false;
+    appState.showSeconds = true;
+    appState.showWeather = true;
+    appState.formatterCache = {};
     writeStorage(STORAGE_KEY_CLOCKS, JSON.stringify([]));
+    writeStorage(STORAGE_KEY_FORMAT, "false");
+    writeStorage(STORAGE_KEY_SECONDS, "true");
+    writeStorage(STORAGE_KEY_WEATHER, "true");
     writeStorage(STORAGE_KEY_HIDE_CURRENT, "false");
     clearSearchResults();
     elements.citySearch.value = "";
     setSearchStatus("");
+    syncSettingsInputs();
+    applyDisplaySettings();
     renderClocks();
     resolveDefaultClock();
   }
@@ -454,7 +491,7 @@
   }
 
   function formatClockTime(date, timeZone, use24Hour) {
-    var formatterSet = getFormatterSet(timeZone, use24Hour);
+    var formatterSet = getFormatterSet(timeZone, use24Hour, appState.showSeconds);
 
     return {
       timeText: formatterSet.timeFormatter.format(date),
@@ -479,19 +516,25 @@
     return pieces.join(" | ");
   }
 
-  function getFormatterSet(timeZone, use24Hour) {
-    var cacheKey = timeZone + "|" + (use24Hour ? "24" : "12");
+  function getFormatterSet(timeZone, use24Hour, showSeconds) {
+    var cacheKey = timeZone + "|" + (use24Hour ? "24" : "12") + "|" + (showSeconds ? "seconds" : "minutes");
+    var timeOptions;
 
     if (!appState.formatterCache[cacheKey]) {
       try {
+        timeOptions = {
+          timeZone: timeZone,
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: !use24Hour
+        };
+
+        if (showSeconds) {
+          timeOptions.second = "2-digit";
+        }
+
         appState.formatterCache[cacheKey] = {
-          timeFormatter: new Intl.DateTimeFormat("en-US", {
-            timeZone: timeZone,
-            hour: "numeric",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: !use24Hour
-          }),
+          timeFormatter: new Intl.DateTimeFormat("en-US", timeOptions),
           zoneFormatter: new Intl.DateTimeFormat("en-US", {
             timeZone: timeZone,
             timeZoneName: "short",
@@ -512,7 +555,10 @@
           })
         };
       } catch (error) {
-        return getFormatterSet(DEFAULT_CLOCK.timezone, use24Hour);
+        if (timeZone === DEFAULT_CLOCK.timezone) {
+          throw error;
+        }
+        return getFormatterSet(DEFAULT_CLOCK.timezone, use24Hour, showSeconds);
       }
     }
 
@@ -548,7 +594,7 @@
   }
 
   function getOffsetMinutes(date, timeZone) {
-    var formatter = getFormatterSet(timeZone, appState.use24Hour).offsetFormatter;
+    var formatter = getFormatterSet(timeZone, appState.use24Hour, appState.showSeconds).offsetFormatter;
     var parts;
     var map = {};
     var i;
@@ -740,6 +786,58 @@
     elements.searchResults.innerHTML = "";
   }
 
+  function syncSettingsInputs() {
+    elements.setting24Hour.checked = appState.use24Hour;
+    elements.settingSeconds.checked = appState.showSeconds;
+    elements.settingWeather.checked = appState.showWeather;
+  }
+
+  function applyDisplaySettings() {
+    if (appState.showWeather) {
+      removeClass(elements.appShell, "hide-weather");
+      return;
+    }
+
+    addClass(elements.appShell, "hide-weather");
+  }
+
+  function openSettingsModal() {
+    appState.lastFocusedElement = document.activeElement;
+    syncSettingsInputs();
+    elements.settingsButton.setAttribute("aria-expanded", "true");
+    elements.modalBackdrop.className = "modal-backdrop";
+    elements.settingsModal.className = "settings-modal";
+    elements.settingsModal.setAttribute("aria-hidden", "false");
+    setTimeout(function () {
+      if (elements.setting24Hour && typeof elements.setting24Hour.focus === "function") {
+        elements.setting24Hour.focus();
+      }
+    }, 0);
+  }
+
+  function closeSettingsModal() {
+    elements.settingsButton.setAttribute("aria-expanded", "false");
+    elements.modalBackdrop.className = "modal-backdrop is-hidden";
+    elements.settingsModal.className = "settings-modal is-hidden";
+    elements.settingsModal.setAttribute("aria-hidden", "true");
+
+    if (appState.lastFocusedElement && typeof appState.lastFocusedElement.focus === "function") {
+      appState.lastFocusedElement.focus();
+    }
+  }
+
+  function onDocumentKeyDown(event) {
+    var key = event.key || event.keyCode;
+
+    if (elements.settingsModal.getAttribute("aria-hidden") === "true") {
+      return;
+    }
+
+    if (key === "Escape" || key === "Esc" || key === 27) {
+      closeSettingsModal();
+    }
+  }
+
   function createJsonRequest(url, callback) {
     var xhr = new XMLHttpRequest();
     var isAborted = false;
@@ -870,6 +968,28 @@
 
   function isArray(value) {
     return Object.prototype.toString.call(value) === "[object Array]";
+  }
+
+  function addClass(element, className) {
+    if (!element) {
+      return;
+    }
+
+    if ((" " + element.className + " ").indexOf(" " + className + " ") === -1) {
+      element.className += (element.className ? " " : "") + className;
+    }
+  }
+
+  function removeClass(element, className) {
+    var current;
+
+    if (!element) {
+      return;
+    }
+
+    current = " " + element.className + " ";
+    current = current.replace(" " + className + " ", " ");
+    element.className = trimString(current);
   }
 
   init();
