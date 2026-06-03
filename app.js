@@ -21,8 +21,8 @@
     hideCurrentLocationClock: false,
     savedClocks: [],
     use24Hour: false,
-    showSeconds: true,
-    showWeather: true,
+    showSeconds: false,
+    showWeather: false,
     formatterCache: {},
     tickTimer: null,
     searchTimer: null,
@@ -79,8 +79,8 @@
     var storedWeather = readStorage(STORAGE_KEY_WEATHER);
     var storedHideCurrent = readStorage(STORAGE_KEY_HIDE_CURRENT);
     appState.use24Hour = storedFormat === "true";
-    appState.showSeconds = storedSeconds !== "false";
-    appState.showWeather = storedWeather !== "false";
+    appState.showSeconds = storedSeconds === "true";
+    appState.showWeather = storedWeather === "true";
     appState.hideCurrentLocationClock = storedHideCurrent === "true";
   }
 
@@ -137,13 +137,13 @@
     appState.defaultClockSource = "fallback";
     appState.hideCurrentLocationClock = false;
     appState.use24Hour = false;
-    appState.showSeconds = true;
-    appState.showWeather = true;
+    appState.showSeconds = false;
+    appState.showWeather = false;
     appState.formatterCache = {};
     writeStorage(STORAGE_KEY_CLOCKS, JSON.stringify([]));
     writeStorage(STORAGE_KEY_FORMAT, "false");
-    writeStorage(STORAGE_KEY_SECONDS, "true");
-    writeStorage(STORAGE_KEY_WEATHER, "true");
+    writeStorage(STORAGE_KEY_SECONDS, "false");
+    writeStorage(STORAGE_KEY_WEATHER, "false");
     writeStorage(STORAGE_KEY_HIDE_CURRENT, "false");
     clearSearchResults();
     elements.citySearch.value = "";
