@@ -5,6 +5,8 @@
   var STORAGE_KEY_FORMAT = "world-clocks-format-24";
   var STORAGE_KEY_SECONDS = "world-clocks-show-seconds";
   var STORAGE_KEY_WEATHER = "world-clocks-show-weather";
+  var STORAGE_KEY_LOCATION_META = "world-clocks-show-location-meta";
+  var STORAGE_KEY_TIME_META = "world-clocks-show-time-meta";
   var STORAGE_KEY_HIDE_CURRENT = "world-clocks-hide-current";
   var SWIPE_DELETE_WIDTH = 88;
   var DEFAULT_CLOCK = {
@@ -24,6 +26,8 @@
     use24Hour: false,
     showSeconds: false,
     showWeather: false,
+    showLocationMeta: true,
+    showTimeMeta: true,
     useSwipeLayout: false,
     formatterCache: {},
     tickTimer: null,
@@ -52,7 +56,9 @@
     settingsClose: document.getElementById("settings-close"),
     setting24Hour: document.getElementById("setting-24-hour"),
     settingSeconds: document.getElementById("setting-seconds"),
-    settingWeather: document.getElementById("setting-weather")
+    settingWeather: document.getElementById("setting-weather"),
+    settingLocationMeta: document.getElementById("setting-location-meta"),
+    settingTimeMeta: document.getElementById("setting-time-meta")
   };
 
   // Boot from localStorage first so the app still works when APIs are unavailable.
@@ -76,6 +82,8 @@
     elements.setting24Hour.addEventListener("change", onSettingsChange, false);
     elements.settingSeconds.addEventListener("change", onSettingsChange, false);
     elements.settingWeather.addEventListener("change", onSettingsChange, false);
+    elements.settingLocationMeta.addEventListener("change", onSettingsChange, false);
+    elements.settingTimeMeta.addEventListener("change", onSettingsChange, false);
     elements.addCityClose.addEventListener("click", closeActiveModal, false);
     elements.settingsClose.addEventListener("click", closeSettingsModal, false);
     elements.modalBackdrop.addEventListener("click", closeActiveModal, false);
@@ -87,10 +95,14 @@
     var storedFormat = readStorage(STORAGE_KEY_FORMAT);
     var storedSeconds = readStorage(STORAGE_KEY_SECONDS);
     var storedWeather = readStorage(STORAGE_KEY_WEATHER);
+    var storedLocationMeta = readStorage(STORAGE_KEY_LOCATION_META);
+    var storedTimeMeta = readStorage(STORAGE_KEY_TIME_META);
     var storedHideCurrent = readStorage(STORAGE_KEY_HIDE_CURRENT);
     appState.use24Hour = storedFormat === "true";
     appState.showSeconds = storedSeconds === "true";
     appState.showWeather = storedWeather === "true";
+    appState.showLocationMeta = storedLocationMeta !== "false";
+    appState.showTimeMeta = storedTimeMeta !== "false";
     appState.hideCurrentLocationClock = storedHideCurrent === "true";
   }
 
@@ -130,10 +142,14 @@
     appState.use24Hour = !!elements.setting24Hour.checked;
     appState.showSeconds = !!elements.settingSeconds.checked;
     appState.showWeather = !!elements.settingWeather.checked;
+    appState.showLocationMeta = !!elements.settingLocationMeta.checked;
+    appState.showTimeMeta = !!elements.settingTimeMeta.checked;
     appState.formatterCache = {};
     writeStorage(STORAGE_KEY_FORMAT, String(appState.use24Hour));
     writeStorage(STORAGE_KEY_SECONDS, String(appState.showSeconds));
     writeStorage(STORAGE_KEY_WEATHER, String(appState.showWeather));
+    writeStorage(STORAGE_KEY_LOCATION_META, String(appState.showLocationMeta));
+    writeStorage(STORAGE_KEY_TIME_META, String(appState.showTimeMeta));
     applyDisplaySettings();
     updateRenderedTimes();
   }
@@ -149,11 +165,15 @@
     appState.use24Hour = false;
     appState.showSeconds = false;
     appState.showWeather = false;
+    appState.showLocationMeta = true;
+    appState.showTimeMeta = true;
     appState.formatterCache = {};
     writeStorage(STORAGE_KEY_CLOCKS, JSON.stringify([]));
     writeStorage(STORAGE_KEY_FORMAT, "false");
     writeStorage(STORAGE_KEY_SECONDS, "false");
     writeStorage(STORAGE_KEY_WEATHER, "false");
+    writeStorage(STORAGE_KEY_LOCATION_META, "true");
+    writeStorage(STORAGE_KEY_TIME_META, "true");
     writeStorage(STORAGE_KEY_HIDE_CURRENT, "false");
     clearSearchResults();
     elements.citySearch.value = "";
@@ -920,15 +940,28 @@
     elements.setting24Hour.checked = appState.use24Hour;
     elements.settingSeconds.checked = appState.showSeconds;
     elements.settingWeather.checked = appState.showWeather;
+    elements.settingLocationMeta.checked = appState.showLocationMeta;
+    elements.settingTimeMeta.checked = appState.showTimeMeta;
   }
 
   function applyDisplaySettings() {
     if (appState.showWeather) {
       removeClass(elements.appShell, "hide-weather");
-      return;
+    } else {
+      addClass(elements.appShell, "hide-weather");
     }
 
-    addClass(elements.appShell, "hide-weather");
+    if (appState.showLocationMeta) {
+      removeClass(elements.appShell, "hide-location-meta");
+    } else {
+      addClass(elements.appShell, "hide-location-meta");
+    }
+
+    if (appState.showTimeMeta) {
+      removeClass(elements.appShell, "hide-time-meta");
+    } else {
+      addClass(elements.appShell, "hide-time-meta");
+    }
   }
 
   function openSettingsModal() {

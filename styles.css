@@ -240,6 +240,14 @@ input {
   display: none;
 }
 
+.hide-location-meta .location-meta {
+  display: none;
+}
+
+.hide-time-meta .time-meta {
+  display: none;
+}
+
 .swipe-delete-layout .clock-header .clock-col-actions,
 .swipe-delete-layout .clock-row .clock-col-actions {
   display: none;
