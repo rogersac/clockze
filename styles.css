@@ -216,6 +216,11 @@ input {
   display: none;
 }
 
+.swipe-delete-layout .clock-header .clock-col-actions,
+.swipe-delete-layout .clock-row .clock-col-actions {
+  display: none;
+}
+
 .clock-header,
 .clock-row {
   display: -webkit-box;
@@ -251,6 +256,22 @@ input {
   padding: 16px 18px;
   border-bottom: 1px solid var(--line-soft);
   min-height: 92px;
+}
+
+.clock-row-inner {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-orient: horizontal;
+  -webkit-box-direction: normal;
+  -ms-flex-direction: row;
+  flex-direction: row;
+  -ms-flex-wrap: wrap;
+  flex-wrap: wrap;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  width: 100%;
 }
 
 .clock-row:last-child {
@@ -328,6 +349,82 @@ input {
   min-height: 44px;
   padding: 0 12px;
   color: var(--danger);
+}
+
+.swipe-delete-button {
+  display: none;
+}
+
+.swipe-delete-layout .clock-row {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+}
+
+.swipe-delete-layout .clock-row-inner {
+  position: relative;
+  z-index: 2;
+  padding: 16px 18px;
+  background: rgba(18, 27, 36, 0.98);
+  -webkit-transition: -webkit-transform 0.18s ease-out;
+  transition: transform 0.18s ease-out;
+}
+
+.swipe-delete-layout .clock-row.is-default .clock-row-inner {
+  background: rgba(24, 38, 51, 0.98);
+}
+
+.swipe-delete-layout .clock-row.is-swiped .clock-row-inner {
+  -webkit-transform: translateX(-88px);
+  transform: translateX(-88px);
+}
+
+.swipe-delete-layout .swipe-delete-button {
+  display: block;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 88px;
+  border: 0;
+  border-radius: 0;
+  background: #b94b4b;
+  color: #ffffff;
+  z-index: 1;
+}
+
+.trash-icon {
+  position: relative;
+  display: inline-block;
+  width: 20px;
+  height: 18px;
+  border: 2px solid #ffffff;
+  border-top: 0;
+  border-radius: 0 0 3px 3px;
+}
+
+.trash-icon:before,
+.trash-icon:after {
+  content: "";
+  position: absolute;
+}
+
+.trash-icon:before {
+  left: -3px;
+  top: -5px;
+  width: 22px;
+  height: 2px;
+  background: #ffffff;
+}
+
+.trash-icon:after {
+  left: 5px;
+  top: -8px;
+  width: 6px;
+  height: 2px;
+  border: 2px solid #ffffff;
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
 }
 
 .remove-button[disabled] {

@@ -6,6 +6,7 @@
   var STORAGE_KEY_SECONDS = "world-clocks-show-seconds";
   var STORAGE_KEY_WEATHER = "world-clocks-show-weather";
   var STORAGE_KEY_HIDE_CURRENT = "world-clocks-hide-current";
+  var SWIPE_DELETE_WIDTH = 88;
   var DEFAULT_CLOCK = {
     name: "Nashville",
     admin1: "Tennessee",
@@ -23,12 +24,14 @@
     use24Hour: false,
     showSeconds: false,
     showWeather: false,
+    useSwipeLayout: false,
     formatterCache: {},
     tickTimer: null,
     searchTimer: null,
     searchRequest: null,
     reverseGeocodeRequest: null,
-    lastFocusedElement: null
+    lastFocusedElement: null,
+    activeSwipedRow: null
   };
 
   var elements = {
@@ -53,6 +56,7 @@
   function init() {
     loadPreferences();
     loadSavedClocks();
+    updateTouchLayout(false);
     bindEvents();
     renderClocks();
     startClockUpdates();
@@ -71,6 +75,7 @@
     elements.settingsClose.addEventListener("click", closeSettingsModal, false);
     elements.modalBackdrop.addEventListener("click", closeSettingsModal, false);
     document.addEventListener("keydown", onDocumentKeyDown, false);
+    window.addEventListener("resize", onWindowResize, false);
   }
 
   function loadPreferences() {
@@ -384,6 +389,7 @@
     }
 
     elements.clockList.appendChild(fragment);
+    bindSwipeRows();
     updateRenderedTimes();
   }
 
@@ -392,14 +398,17 @@
       elements.clockTemplate.content.firstElementChild.cloneNode(true) :
       createFallbackTemplateClone();
     var removeButton = row.querySelector(".remove-button");
+    var swipeDeleteButton = row.querySelector(".swipe-delete-button");
 
     row.setAttribute("data-timezone", clock.timezone);
 
     if (isDefault) {
-      configureDefaultClockButton(removeButton, clock);
+      configureDefaultClockButton(row, removeButton, swipeDeleteButton, clock);
     } else {
       attachClockData(removeButton, clock);
+      attachClockData(swipeDeleteButton, clock);
       removeButton.addEventListener("click", onRemoveClockClick, false);
+      swipeDeleteButton.addEventListener("click", onRemoveClockClick, false);
     }
 
     row.querySelector(".location-main").textContent = clock.name;
@@ -420,10 +429,13 @@
     var wrapper = document.createElement("div");
     wrapper.innerHTML =
       '<article class="clock-row">' +
+      '<button class="swipe-delete-button" type="button" aria-label="Delete clock"><span class="trash-icon" aria-hidden="true"></span><span class="sr-only">Delete</span></button>' +
+      '<div class="clock-row-inner">' +
       '<div class="clock-col clock-col-location"><div class="location-main"></div><div class="location-meta"></div></div>' +
       '<div class="clock-col clock-col-time"><div class="time-main"></div><div class="time-meta"></div></div>' +
       '<div class="clock-col clock-col-weather weather-slot"><div class="weather-placeholder">--</div><div class="weather-meta">Temp / High / Low / Icon</div></div>' +
       '<div class="clock-col clock-col-actions"><button class="remove-button" type="button">Remove</button></div>' +
+      '</div>' +
       '</article>';
     return wrapper.firstChild;
   }
@@ -454,6 +466,137 @@
     appState.hideCurrentLocationClock = true;
     writeStorage(STORAGE_KEY_HIDE_CURRENT, "true");
     renderClocks();
+  }
+
+  function bindSwipeRows() {
+    var rows;
+    var i;
+
+    appState.activeSwipedRow = null;
+
+    if (!appState.useSwipeLayout) {
+      return;
+    }
+
+    rows = elements.clockList.getElementsByClassName("clock-row");
+    for (i = 0; i < rows.length; i += 1) {
+      bindSwipeRow(rows[i]);
+    }
+  }
+
+  function bindSwipeRow(row) {
+    var rowInner = row.querySelector(".clock-row-inner");
+    var swipeState;
+
+    if (!rowInner || row.getAttribute("data-swipe-bound") === "true") {
+      return;
+    }
+
+    swipeState = {
+      startX: 0,
+      startY: 0,
+      baseOffset: 0,
+      currentOffset: 0,
+      isTracking: false,
+      isHorizontal: false
+    };
+
+    row.setAttribute("data-swipe-bound", "true");
+
+    rowInner.addEventListener("touchstart", function (event) {
+      var touch;
+
+      if (!appState.useSwipeLayout || !event.touches || !event.touches.length) {
+        return;
+      }
+
+      closeOtherSwipedRows(row);
+
+      touch = event.touches[0];
+      swipeState.startX = touch.pageX;
+      swipeState.startY = touch.pageY;
+      swipeState.baseOffset = isRowSwiped(row) ? -SWIPE_DELETE_WIDTH : 0;
+      swipeState.currentOffset = swipeState.baseOffset;
+      swipeState.isTracking = true;
+      swipeState.isHorizontal = false;
+      rowInner.style.webkitTransition = "none";
+      rowInner.style.transition = "none";
+    }, false);
+
+    rowInner.addEventListener("touchmove", function (event) {
+      var touch;
+      var deltaX;
+      var deltaY;
+      var nextOffset;
+
+      if (!swipeState.isTracking || !event.touches || !event.touches.length) {
+        return;
+      }
+
+      touch = event.touches[0];
+      deltaX = touch.pageX - swipeState.startX;
+      deltaY = touch.pageY - swipeState.startY;
+
+      if (!swipeState.isHorizontal) {
+        if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+          swipeState.isHorizontal = true;
+        } else if (Math.abs(deltaY) > 10) {
+          swipeState.isTracking = false;
+          restoreRowTransition(rowInner);
+          return;
+        }
+      }
+
+      if (!swipeState.isHorizontal) {
+        return;
+      }
+
+      nextOffset = swipeState.baseOffset + deltaX;
+      if (nextOffset > 0) {
+        nextOffset = 0;
+      }
+      if (nextOffset < -SWIPE_DELETE_WIDTH) {
+        nextOffset = -SWIPE_DELETE_WIDTH;
+      }
+
+      swipeState.currentOffset = nextOffset;
+      setRowOffset(rowInner, nextOffset);
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    }, false);
+
+    rowInner.addEventListener("touchend", function () {
+      finishSwipe(row, rowInner, swipeState);
+    }, false);
+
+    rowInner.addEventListener("touchcancel", function () {
+      finishSwipe(row, rowInner, swipeState);
+    }, false);
+
+    rowInner.addEventListener("click", function (event) {
+      if (isRowSwiped(row)) {
+        closeSwipedRow(row);
+        event.preventDefault();
+      }
+    }, false);
+  }
+
+  function finishSwipe(row, rowInner, swipeState) {
+    if (!swipeState.isTracking) {
+      return;
+    }
+
+    swipeState.isTracking = false;
+    restoreRowTransition(rowInner);
+
+    if (swipeState.isHorizontal && swipeState.currentOffset <= (-SWIPE_DELETE_WIDTH / 2)) {
+      openSwipedRow(row);
+      return;
+    }
+
+    closeSwipedRow(row);
   }
 
   function startClockUpdates() {
@@ -730,33 +873,17 @@
     return pieces.join(", ") || clock.timezone;
   }
 
-  function configureDefaultClockButton(removeButton, clock) {
-    rowAddDefaultClass(removeButton);
+  function configureDefaultClockButton(row, removeButton, swipeDeleteButton, clock) {
+    if (row.className.indexOf("is-default") === -1) {
+      row.className += " is-default";
+    }
+
     attachClockData(removeButton, clock);
+    attachClockData(swipeDeleteButton, clock);
     removeButton.textContent = "Remove";
     removeButton.disabled = false;
     removeButton.addEventListener("click", onRemoveDefaultClockClick, false);
-  }
-
-  function rowAddDefaultClass(removeButton) {
-    var row = findParentClockRow(removeButton);
-
-    if (row && row.className.indexOf("is-default") === -1) {
-      row.className += " is-default";
-    }
-  }
-
-  function findParentClockRow(element) {
-    var current = element;
-
-    while (current && current.nodeType === 1) {
-      if (current.className && String(current.className).indexOf("clock-row") !== -1) {
-        return current;
-      }
-      current = current.parentNode;
-    }
-
-    return null;
+    swipeDeleteButton.addEventListener("click", onRemoveDefaultClockClick, false);
   }
 
   function shouldShowDefaultClock() {
@@ -802,6 +929,7 @@
   }
 
   function openSettingsModal() {
+    closeAllSwipedRows();
     appState.lastFocusedElement = document.activeElement;
     syncSettingsInputs();
     elements.settingsButton.setAttribute("aria-expanded", "true");
@@ -835,7 +963,12 @@
 
     if (key === "Escape" || key === "Esc" || key === 27) {
       closeSettingsModal();
+      closeAllSwipedRows();
     }
+  }
+
+  function onWindowResize() {
+    updateTouchLayout(true);
   }
 
   function createJsonRequest(url, callback) {
@@ -990,6 +1123,108 @@
     current = " " + element.className + " ";
     current = current.replace(" " + className + " ", " ");
     element.className = trimString(current);
+  }
+
+  function updateTouchLayout(shouldRender) {
+    var nextValue = detectSwipeLayout();
+
+    if (appState.useSwipeLayout === nextValue) {
+      return;
+    }
+
+    appState.useSwipeLayout = nextValue;
+
+    if (appState.useSwipeLayout) {
+      addClass(elements.appShell, "swipe-delete-layout");
+    } else {
+      removeClass(elements.appShell, "swipe-delete-layout");
+      appState.activeSwipedRow = null;
+    }
+
+    if (shouldRender) {
+      renderClocks();
+    }
+  }
+
+  function detectSwipeLayout() {
+    var userAgent = navigator.userAgent || "";
+    var touchCapable = ("ontouchstart" in window) ||
+      (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
+      (navigator.msMaxTouchPoints && navigator.msMaxTouchPoints > 0);
+    var mobileUserAgent = /iPad|iPhone|iPod|Android/i.test(userAgent);
+    var maxDimension = Math.max(window.innerWidth || 0, window.innerHeight || 0);
+
+    if (mobileUserAgent) {
+      return true;
+    }
+
+    return !!(touchCapable && maxDimension && maxDimension <= 1180);
+  }
+
+  function setRowOffset(rowInner, offset) {
+    var transformValue = "translateX(" + String(offset) + "px)";
+    rowInner.style.webkitTransform = transformValue;
+    rowInner.style.transform = transformValue;
+  }
+
+  function restoreRowTransition(rowInner) {
+    rowInner.style.webkitTransition = "-webkit-transform 0.18s ease-out";
+    rowInner.style.transition = "transform 0.18s ease-out";
+  }
+
+  function isRowSwiped(row) {
+    return (" " + row.className + " ").indexOf(" is-swiped ") !== -1;
+  }
+
+  function openSwipedRow(row) {
+    var rowInner;
+
+    if (!row) {
+      return;
+    }
+
+    closeOtherSwipedRows(row);
+    rowInner = row.querySelector(".clock-row-inner");
+
+    if (!rowInner) {
+      return;
+    }
+
+    addClass(row, "is-swiped");
+    restoreRowTransition(rowInner);
+    setRowOffset(rowInner, -SWIPE_DELETE_WIDTH);
+    appState.activeSwipedRow = row;
+  }
+
+  function closeSwipedRow(row) {
+    var rowInner;
+
+    if (!row) {
+      return;
+    }
+
+    rowInner = row.querySelector(".clock-row-inner");
+    if (!rowInner) {
+      return;
+    }
+
+    removeClass(row, "is-swiped");
+    restoreRowTransition(rowInner);
+    setRowOffset(rowInner, 0);
+
+    if (appState.activeSwipedRow === row) {
+      appState.activeSwipedRow = null;
+    }
+  }
+
+  function closeOtherSwipedRows(exceptRow) {
+    if (appState.activeSwipedRow && appState.activeSwipedRow !== exceptRow) {
+      closeSwipedRow(appState.activeSwipedRow);
+    }
+  }
+
+  function closeAllSwipedRows() {
+    closeOtherSwipedRows(null);
   }
 
   init();

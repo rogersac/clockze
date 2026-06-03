@@ -103,23 +103,30 @@
 
   <template id="clock-row-template">
     <article class="clock-row">
-      <div class="clock-col clock-col-location">
-        <div class="location-main"></div>
-        <div class="location-meta"></div>
-      </div>
+      <button class="swipe-delete-button" type="button" aria-label="Delete clock">
+        <span class="trash-icon" aria-hidden="true"></span>
+        <span class="sr-only">Delete</span>
+      </button>
 
-      <div class="clock-col clock-col-time">
-        <div class="time-main"></div>
-        <div class="time-meta"></div>
-      </div>
+      <div class="clock-row-inner">
+        <div class="clock-col clock-col-location">
+          <div class="location-main"></div>
+          <div class="location-meta"></div>
+        </div>
 
-      <div class="clock-col clock-col-weather weather-slot">
-        <div class="weather-placeholder">--</div>
-        <div class="weather-meta">Temp / High / Low / Icon</div>
-      </div>
+        <div class="clock-col clock-col-time">
+          <div class="time-main"></div>
+          <div class="time-meta"></div>
+        </div>
 
-      <div class="clock-col clock-col-actions">
-        <button class="remove-button" type="button">Remove</button>
+        <div class="clock-col clock-col-weather weather-slot">
+          <div class="weather-placeholder">--</div>
+          <div class="weather-meta">Temp / High / Low / Icon</div>
+        </div>
+
+        <div class="clock-col clock-col-actions">
+          <button class="remove-button" type="button">Remove</button>
+        </div>
       </div>
     </article>
   </template>
