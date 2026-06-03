@@ -45,14 +45,12 @@ input {
   padding: 20px 16px 32px;
 }
 
-.controls h2,
 .section-heading h2 {
   margin: 0;
   font-size: 1.8rem;
   letter-spacing: 0.01em;
 }
 
-.controls-heading p,
 .section-heading p {
   margin: 6px 0 0;
   color: var(--muted);
@@ -113,6 +111,18 @@ input {
   padding: 0;
 }
 
+.plus-button {
+  font-size: 1.75rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.plus-icon {
+  display: inline-block;
+  line-height: 1;
+  margin-top: -2px;
+}
+
 .icon {
   position: relative;
   display: inline-block;
@@ -135,7 +145,6 @@ input {
   margin-top: 0;
 }
 
-.controls,
 .clocks-section {
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -143,13 +152,8 @@ input {
   box-shadow: 0 16px 26px var(--shadow);
 }
 
-.controls {
-  padding: 18px;
-}
-
 .search-panel {
   position: relative;
-  margin-top: 14px;
 }
 
 #city-search {
@@ -518,6 +522,20 @@ input {
   padding: 8px 18px 18px;
 }
 
+.search-dialog {
+  max-width: 840px;
+}
+
+.search-dialog-body {
+  padding: 8px 18px 18px;
+}
+
+.search-dialog-copy {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.98rem;
+}
+
 .settings-option {
   display: -webkit-box;
   display: -ms-flexbox;
@@ -588,12 +606,10 @@ input {
     padding-right: 12px;
   }
 
-  .controls,
   .clocks-section {
     border-radius: 16px;
   }
 
-  .controls h2,
   .section-heading h2 {
     font-size: 1.5rem;
   }

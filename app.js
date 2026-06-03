@@ -31,19 +31,23 @@
     searchRequest: null,
     reverseGeocodeRequest: null,
     lastFocusedElement: null,
-    activeSwipedRow: null
+    activeSwipedRow: null,
+    activeModalName: ""
   };
 
   var elements = {
     appShell: document.querySelector(".app-shell"),
     clockList: document.getElementById("clock-list"),
     clockTemplate: document.getElementById("clock-row-template"),
+    addCityButton: document.getElementById("add-city-button"),
     settingsButton: document.getElementById("settings-button"),
     resetButton: document.getElementById("reset-button"),
     citySearch: document.getElementById("city-search"),
     searchStatus: document.getElementById("search-status"),
     searchResults: document.getElementById("search-results"),
     modalBackdrop: document.getElementById("modal-backdrop"),
+    addCityModal: document.getElementById("add-city-modal"),
+    addCityClose: document.getElementById("add-city-close"),
     settingsModal: document.getElementById("settings-modal"),
     settingsClose: document.getElementById("settings-close"),
     setting24Hour: document.getElementById("setting-24-hour"),
@@ -65,14 +69,16 @@
   function bindEvents() {
     syncSettingsInputs();
     applyDisplaySettings();
+    elements.addCityButton.addEventListener("click", openAddCityModal, false);
     elements.settingsButton.addEventListener("click", openSettingsModal, false);
     elements.resetButton.addEventListener("click", onResetClick, false);
     elements.citySearch.addEventListener("input", onSearchInput, false);
     elements.setting24Hour.addEventListener("change", onSettingsChange, false);
     elements.settingSeconds.addEventListener("change", onSettingsChange, false);
     elements.settingWeather.addEventListener("change", onSettingsChange, false);
+    elements.addCityClose.addEventListener("click", closeActiveModal, false);
     elements.settingsClose.addEventListener("click", closeSettingsModal, false);
-    elements.modalBackdrop.addEventListener("click", closeSettingsModal, false);
+    elements.modalBackdrop.addEventListener("click", closeActiveModal, false);
     document.addEventListener("keydown", onDocumentKeyDown, false);
     window.addEventListener("resize", onWindowResize, false);
   }
@@ -273,6 +279,7 @@
     clearSearchResults();
     elements.citySearch.value = "";
     setSearchStatus("Clock added.");
+    closeActiveModal();
   }
 
   function resolveDefaultClock() {
@@ -928,6 +935,7 @@
     closeAllSwipedRows();
     appState.lastFocusedElement = document.activeElement;
     syncSettingsInputs();
+    appState.activeModalName = "settings";
     elements.settingsButton.setAttribute("aria-expanded", "true");
     elements.modalBackdrop.className = "modal-backdrop";
     elements.settingsModal.className = "settings-modal";
@@ -940,6 +948,7 @@
   }
 
   function closeSettingsModal() {
+    appState.activeModalName = "";
     elements.settingsButton.setAttribute("aria-expanded", "false");
     elements.modalBackdrop.className = "modal-backdrop is-hidden";
     elements.settingsModal.className = "settings-modal is-hidden";
@@ -950,15 +959,53 @@
     }
   }
 
+  function openAddCityModal() {
+    closeAllSwipedRows();
+    appState.lastFocusedElement = document.activeElement;
+    appState.activeModalName = "add-city";
+    elements.addCityButton.setAttribute("aria-expanded", "true");
+    elements.modalBackdrop.className = "modal-backdrop";
+    elements.addCityModal.className = "settings-modal";
+    elements.addCityModal.setAttribute("aria-hidden", "false");
+    setTimeout(function () {
+      if (elements.citySearch && typeof elements.citySearch.focus === "function") {
+        elements.citySearch.focus();
+      }
+    }, 0);
+  }
+
+  function closeAddCityModal() {
+    appState.activeModalName = "";
+    elements.addCityButton.setAttribute("aria-expanded", "false");
+    elements.modalBackdrop.className = "modal-backdrop is-hidden";
+    elements.addCityModal.className = "settings-modal is-hidden";
+    elements.addCityModal.setAttribute("aria-hidden", "true");
+
+    if (appState.lastFocusedElement && typeof appState.lastFocusedElement.focus === "function") {
+      appState.lastFocusedElement.focus();
+    }
+  }
+
+  function closeActiveModal() {
+    if (appState.activeModalName === "settings") {
+      closeSettingsModal();
+      return;
+    }
+
+    if (appState.activeModalName === "add-city") {
+      closeAddCityModal();
+    }
+  }
+
   function onDocumentKeyDown(event) {
     var key = event.key || event.keyCode;
 
-    if (elements.settingsModal.getAttribute("aria-hidden") === "true") {
+    if (!appState.activeModalName) {
       return;
     }
 
     if (key === "Escape" || key === "Esc" || key === 27) {
-      closeSettingsModal();
+      closeActiveModal();
       closeAllSwipedRows();
     }
   }
