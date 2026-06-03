@@ -407,11 +407,13 @@ input {
   position: relative;
   overflow: hidden;
   padding: 0;
+  min-height: 0;
 }
 
 .swipe-delete-layout .clock-row-inner {
   position: relative;
   z-index: 2;
+  min-height: 92px;
   padding: 16px 18px;
   background: rgba(18, 27, 36, 0.98);
   -webkit-transition: -webkit-transform 0.18s ease-out;
