@@ -388,6 +388,27 @@ input {
   font-size: 1.05rem;
 }
 
+.weather-primary {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+}
+
+.weather-icon {
+  display: inline-block;
+  min-width: 1.2em;
+  font-size: 1.2rem;
+  line-height: 1;
+  text-align: center;
+}
+
+.weather-icon + .weather-placeholder {
+  margin-left: 8px;
+}
+
 .weather-slot {
   opacity: 0.72;
 }

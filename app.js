@@ -469,14 +469,11 @@
     row.querySelector(".time-main").textContent = "--:--:--";
     row.querySelector(".time-meta").textContent = clock.timezone || "";
     row.querySelector(".date-main").textContent = "--";
+    row.querySelector(".weather-icon").textContent = "?";
+    row.querySelector(".weather-icon").setAttribute("title", "Forecast unavailable");
+    row.querySelector(".weather-icon").setAttribute("aria-label", "Forecast unavailable");
     row.querySelector(".weather-placeholder").textContent = "--";
     row.querySelector(".weather-meta").textContent = "Weather off";
-
-    /*
-      Future weather support:
-      - Fetch weather data from the Open-Meteo Forecast API with the clock latitude/longitude.
-      - Populate current temperature, daily high, daily low, and a weather condition icon here.
-    */
 
     return row;
   }
@@ -490,7 +487,7 @@
       '<div class="clock-col clock-col-location"><div class="location-main"></div><div class="location-meta"></div></div>' +
       '<div class="clock-col clock-col-time"><div class="time-main"></div><div class="time-meta"></div></div>' +
       '<div class="clock-col clock-col-date"><div class="date-main"></div></div>' +
-      '<div class="clock-col clock-col-weather weather-slot"><div class="weather-placeholder">--</div><div class="weather-meta">Temp / High / Low / Icon</div></div>' +
+      '<div class="clock-col clock-col-weather weather-slot"><div class="weather-primary"><span class="weather-icon" aria-hidden="true">?</span><span class="weather-placeholder">--</span></div><div class="weather-meta">Temp / High / Low / Icon</div></div>' +
       '<div class="clock-col clock-col-actions"><button class="remove-button" type="button">Remove</button></div>' +
       '</div>' +
       '</article>';
@@ -728,6 +725,8 @@
     appState.weatherCache[key] = {
       status: "loading",
       fetchedAt: now,
+      iconText: "…",
+      iconLabel: "Loading forecast",
       currentText: "...",
       rangeText: "Loading weather"
     };
@@ -741,6 +740,8 @@
         appState.weatherCache[key] = {
           status: "error",
           fetchedAt: new Date().getTime(),
+          iconText: "!",
+          iconLabel: "Weather unavailable",
           currentText: "--",
           rangeText: "Weather unavailable"
         };
@@ -759,7 +760,7 @@
       "&longitude=" +
       encodeURIComponent(String(clock.longitude)) +
       "&current=temperature_2m" +
-      "&daily=temperature_2m_max,temperature_2m_min" +
+      "&daily=weather_code,temperature_2m_max,temperature_2m_min" +
       "&forecast_days=1" +
       "&timezone=" +
       encodeURIComponent(clock.timezone || DEFAULT_CLOCK.timezone) +
@@ -772,13 +773,17 @@
     var dailyUnits = data && data.daily_units ? data.daily_units.temperature_2m_max : currentUnits;
     var currentTemp = data && data.current ? data.current.temperature_2m : null;
     var daily = data && data.daily ? data.daily : null;
+    var weatherCode = daily && daily.weather_code && daily.weather_code.length ? daily.weather_code[0] : null;
     var high = daily && daily.temperature_2m_max && daily.temperature_2m_max.length ? daily.temperature_2m_max[0] : null;
     var low = daily && daily.temperature_2m_min && daily.temperature_2m_min.length ? daily.temperature_2m_min[0] : null;
+    var weatherVisual = getWeatherVisual(weatherCode);
 
     if (typeof currentTemp !== "number" || typeof high !== "number" || typeof low !== "number") {
       return {
         status: "error",
         fetchedAt: new Date().getTime(),
+        iconText: "!",
+        iconLabel: "Weather unavailable",
         currentText: "--",
         rangeText: "Weather unavailable"
       };
@@ -787,9 +792,55 @@
     return {
       status: "ready",
       fetchedAt: new Date().getTime(),
+      iconText: weatherVisual.icon,
+      iconLabel: weatherVisual.label,
       currentText: formatTemperature(currentTemp, currentUnits),
-      rangeText: "H " + formatTemperature(high, dailyUnits) + " / L " + formatTemperature(low, dailyUnits)
+      rangeText: weatherVisual.label + " | H " + formatTemperature(high, dailyUnits) + " / L " + formatTemperature(low, dailyUnits)
     };
+  }
+
+  function getWeatherVisual(weatherCode) {
+    switch (weatherCode) {
+      case 0:
+        return { icon: "☀", label: "Clear" };
+      case 1:
+        return { icon: "⛅", label: "Mainly clear" };
+      case 2:
+        return { icon: "⛅", label: "Partly cloudy" };
+      case 3:
+        return { icon: "☁", label: "Overcast" };
+      case 45:
+      case 48:
+        return { icon: "〰", label: "Fog" };
+      case 51:
+      case 53:
+      case 55:
+      case 56:
+      case 57:
+        return { icon: "☂", label: "Drizzle" };
+      case 61:
+      case 63:
+      case 65:
+      case 66:
+      case 67:
+      case 80:
+      case 81:
+      case 82:
+        return { icon: "☔", label: "Rain" };
+      case 71:
+      case 73:
+      case 75:
+      case 77:
+      case 85:
+      case 86:
+        return { icon: "❄", label: "Snow" };
+      case 95:
+      case 96:
+      case 99:
+        return { icon: "⚡", label: "Thunderstorm" };
+      default:
+        return { icon: "?", label: "Forecast unavailable" };
+    }
   }
 
   function formatTemperature(value, unit) {
@@ -806,22 +857,33 @@
     var i;
     var row;
     var weatherData;
+    var icon;
     var placeholder;
     var meta;
 
     for (i = 0; i < rows.length; i += 1) {
       row = rows[i];
       weatherData = appState.weatherCache[weatherCacheKey(combinedClocks[i])];
+      icon = row.querySelector(".weather-icon");
       placeholder = row.querySelector(".weather-placeholder");
       meta = row.querySelector(".weather-meta");
 
       if (!appState.showWeather) {
+        icon.textContent = "?";
+        icon.setAttribute("title", "Weather off");
+        icon.setAttribute("aria-label", "Weather off");
         placeholder.textContent = "--";
         meta.textContent = "Weather off";
       } else if (weatherData) {
+        icon.textContent = weatherData.iconText || "?";
+        icon.setAttribute("title", weatherData.iconLabel || "Forecast unavailable");
+        icon.setAttribute("aria-label", weatherData.iconLabel || "Forecast unavailable");
         placeholder.textContent = weatherData.currentText;
         meta.textContent = weatherData.rangeText;
       } else {
+        icon.textContent = "…";
+        icon.setAttribute("title", "Loading forecast");
+        icon.setAttribute("aria-label", "Loading forecast");
         placeholder.textContent = "...";
         meta.textContent = "Loading weather";
       }
