@@ -10,6 +10,7 @@
   var STORAGE_KEY_TIME_META = "world-clocks-show-time-meta";
   var STORAGE_KEY_HIDE_CURRENT = "world-clocks-hide-current";
   var SWIPE_DELETE_WIDTH = 88;
+  var WEATHER_CACHE_MS = 15 * 60 * 1000;
   var DEFAULT_CLOCK = {
     name: "Nashville",
     admin1: "Tennessee",
@@ -32,6 +33,8 @@
     showTimeMeta: true,
     useSwipeLayout: false,
     formatterCache: {},
+    weatherCache: {},
+    weatherRequests: {},
     tickTimer: null,
     searchTimer: null,
     searchRequest: null,
@@ -160,6 +163,9 @@
     writeStorage(STORAGE_KEY_TIME_META, String(appState.showTimeMeta));
     applyDisplaySettings();
     updateRenderedTimes();
+    if (appState.showWeather) {
+      refreshVisibleWeather(false);
+    }
   }
 
   function onResetClick() {
@@ -177,6 +183,8 @@
     appState.showLocationMeta = true;
     appState.showTimeMeta = true;
     appState.formatterCache = {};
+    appState.weatherCache = {};
+    abortAllWeatherRequests();
     writeStorage(STORAGE_KEY_CLOCKS, JSON.stringify([]));
     writeStorage(STORAGE_KEY_FORMAT, "false");
     writeStorage(STORAGE_KEY_SECONDS, "false");
@@ -425,6 +433,7 @@
     bindSwipeRows();
     updateRenderedTimes();
     applyMetaVisibility();
+    refreshVisibleWeather(false);
   }
 
   function createClockRow(clock, isDefault) {
@@ -450,6 +459,8 @@
     row.querySelector(".time-main").textContent = "--:--:--";
     row.querySelector(".time-meta").textContent = clock.timezone || "";
     row.querySelector(".date-main").textContent = "--";
+    row.querySelector(".weather-placeholder").textContent = "--";
+    row.querySelector(".weather-meta").textContent = "Weather off";
 
     /*
       Future weather support:
@@ -667,6 +678,138 @@
       row.querySelector(".time-main").textContent = timeParts.timeText;
       row.querySelector(".time-meta").textContent = buildTimeMetaText(timeParts, clock);
       row.querySelector(".date-main").textContent = timeParts.dateText;
+    }
+  }
+
+  function refreshVisibleWeather(force) {
+    var rows = elements.clockList.getElementsByClassName("clock-row");
+    var combinedClocks = getVisibleClocks();
+    var i;
+
+    applyWeatherToRows();
+
+    if (!appState.showWeather) {
+      abortAllWeatherRequests();
+      return;
+    }
+
+    for (i = 0; i < combinedClocks.length; i += 1) {
+      if (rows[i]) {
+        fetchWeatherForClock(combinedClocks[i], force);
+      }
+    }
+  }
+
+  function fetchWeatherForClock(clock, force) {
+    var key = clockKey(clock);
+    var existingCache = appState.weatherCache[key];
+    var existingRequest = appState.weatherRequests[key];
+    var now = new Date().getTime();
+    var url;
+
+    if (existingRequest) {
+      return;
+    }
+
+    if (!force && existingCache && existingCache.status === "ready" && (now - existingCache.fetchedAt) < WEATHER_CACHE_MS) {
+      return;
+    }
+
+    appState.weatherCache[key] = {
+      status: "loading",
+      fetchedAt: now,
+      currentText: "...",
+      rangeText: "Loading weather"
+    };
+    applyWeatherToRows();
+
+    url = buildWeatherUrl(clock);
+    appState.weatherRequests[key] = createJsonRequest(url, function (error, data) {
+      delete appState.weatherRequests[key];
+
+      if (error) {
+        appState.weatherCache[key] = {
+          status: "error",
+          fetchedAt: new Date().getTime(),
+          currentText: "--",
+          rangeText: "Weather unavailable"
+        };
+        applyWeatherToRows();
+        return;
+      }
+
+      appState.weatherCache[key] = parseWeatherResponse(data);
+      applyWeatherToRows();
+    });
+  }
+
+  function buildWeatherUrl(clock) {
+    return "https://api.open-meteo.com/v1/forecast?latitude=" +
+      encodeURIComponent(String(clock.latitude)) +
+      "&longitude=" +
+      encodeURIComponent(String(clock.longitude)) +
+      "&current=temperature_2m" +
+      "&daily=temperature_2m_max,temperature_2m_min" +
+      "&forecast_days=1" +
+      "&timezone=" +
+      encodeURIComponent(clock.timezone || DEFAULT_CLOCK.timezone) +
+      "&temperature_unit=fahrenheit";
+  }
+
+  function parseWeatherResponse(data) {
+    var currentUnits = data && data.current_units ? data.current_units.temperature_2m : "";
+    var dailyUnits = data && data.daily_units ? data.daily_units.temperature_2m_max : currentUnits;
+    var currentTemp = data && data.current ? data.current.temperature_2m : null;
+    var daily = data && data.daily ? data.daily : null;
+    var high = daily && daily.temperature_2m_max && daily.temperature_2m_max.length ? daily.temperature_2m_max[0] : null;
+    var low = daily && daily.temperature_2m_min && daily.temperature_2m_min.length ? daily.temperature_2m_min[0] : null;
+
+    if (typeof currentTemp !== "number" || typeof high !== "number" || typeof low !== "number") {
+      return {
+        status: "error",
+        fetchedAt: new Date().getTime(),
+        currentText: "--",
+        rangeText: "Weather unavailable"
+      };
+    }
+
+    return {
+      status: "ready",
+      fetchedAt: new Date().getTime(),
+      currentText: formatTemperature(currentTemp, currentUnits),
+      rangeText: "H " + formatTemperature(high, dailyUnits) + " / L " + formatTemperature(low, dailyUnits)
+    };
+  }
+
+  function formatTemperature(value, unit) {
+    return String(Math.round(value)) + (unit || "");
+  }
+
+  function applyWeatherToRows() {
+    var rows = elements.clockList.getElementsByClassName("clock-row");
+    var combinedClocks = getVisibleClocks();
+    var i;
+    var row;
+    var weatherData;
+    var placeholder;
+    var meta;
+
+    for (i = 0; i < rows.length; i += 1) {
+      row = rows[i];
+      weatherData = appState.weatherCache[clockKey(combinedClocks[i])];
+      placeholder = row.querySelector(".weather-placeholder");
+      meta = row.querySelector(".weather-meta");
+
+      if (!appState.showWeather) {
+        placeholder.textContent = "--";
+        meta.textContent = "Weather off";
+      } else if (weatherData) {
+        placeholder.textContent = weatherData.currentText;
+        meta.textContent = weatherData.rangeText;
+      } else {
+        placeholder.textContent = "...";
+        meta.textContent = "Loading weather";
+      }
     }
   }
 
@@ -1151,6 +1294,18 @@
         return;
       }
     }
+  }
+
+  function abortAllWeatherRequests() {
+    var key;
+
+    for (key in appState.weatherRequests) {
+      if (Object.prototype.hasOwnProperty.call(appState.weatherRequests, key)) {
+        abortRequest(appState.weatherRequests[key]);
+      }
+    }
+
+    appState.weatherRequests = {};
   }
 
   function getBrowserTimeZone() {
