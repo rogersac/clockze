@@ -5,6 +5,7 @@
   var STORAGE_KEY_FORMAT = "world-clocks-format-24";
   var STORAGE_KEY_SECONDS = "world-clocks-show-seconds";
   var STORAGE_KEY_WEATHER = "world-clocks-show-weather";
+  var STORAGE_KEY_TEMPERATURE_UNIT = "world-clocks-temperature-unit";
   var STORAGE_KEY_DATE = "world-clocks-show-date";
   var STORAGE_KEY_LOCATION_META = "world-clocks-show-location-meta";
   var STORAGE_KEY_TIME_META = "world-clocks-show-time-meta";
@@ -28,6 +29,7 @@
     use24Hour: false,
     showSeconds: false,
     showWeather: false,
+    temperatureUnit: "fahrenheit",
     showDate: false,
     showLocationMeta: true,
     showTimeMeta: true,
@@ -62,6 +64,7 @@
     setting24Hour: document.getElementById("setting-24-hour"),
     settingSeconds: document.getElementById("setting-seconds"),
     settingWeather: document.getElementById("setting-weather"),
+    settingTemperatureUnit: document.getElementById("setting-temperature-unit"),
     settingDate: document.getElementById("setting-date"),
     settingLocationMeta: document.getElementById("setting-location-meta"),
     settingTimeMeta: document.getElementById("setting-time-meta")
@@ -88,6 +91,7 @@
     elements.setting24Hour.addEventListener("change", onSettingsChange, false);
     elements.settingSeconds.addEventListener("change", onSettingsChange, false);
     elements.settingWeather.addEventListener("change", onSettingsChange, false);
+    elements.settingTemperatureUnit.addEventListener("change", onSettingsChange, false);
     elements.settingDate.addEventListener("change", onSettingsChange, false);
     elements.settingLocationMeta.addEventListener("change", onSettingsChange, false);
     elements.settingTimeMeta.addEventListener("change", onSettingsChange, false);
@@ -102,6 +106,7 @@
     var storedFormat = readStorage(STORAGE_KEY_FORMAT);
     var storedSeconds = readStorage(STORAGE_KEY_SECONDS);
     var storedWeather = readStorage(STORAGE_KEY_WEATHER);
+    var storedTemperatureUnit = readStorage(STORAGE_KEY_TEMPERATURE_UNIT);
     var storedDate = readStorage(STORAGE_KEY_DATE);
     var storedLocationMeta = readStorage(STORAGE_KEY_LOCATION_META);
     var storedTimeMeta = readStorage(STORAGE_KEY_TIME_META);
@@ -109,6 +114,7 @@
     appState.use24Hour = storedFormat === "true";
     appState.showSeconds = storedSeconds === "true";
     appState.showWeather = storedWeather === "true";
+    appState.temperatureUnit = storedTemperatureUnit === "celsius" ? "celsius" : "fahrenheit";
     appState.showDate = storedDate === "true";
     appState.showLocationMeta = storedLocationMeta !== "false";
     appState.showTimeMeta = storedTimeMeta !== "false";
@@ -151,6 +157,7 @@
     appState.use24Hour = !!elements.setting24Hour.checked;
     appState.showSeconds = !!elements.settingSeconds.checked;
     appState.showWeather = !!elements.settingWeather.checked;
+    appState.temperatureUnit = elements.settingTemperatureUnit.value === "celsius" ? "celsius" : "fahrenheit";
     appState.showDate = !!elements.settingDate.checked;
     appState.showLocationMeta = !!elements.settingLocationMeta.checked;
     appState.showTimeMeta = !!elements.settingTimeMeta.checked;
@@ -158,13 +165,14 @@
     writeStorage(STORAGE_KEY_FORMAT, String(appState.use24Hour));
     writeStorage(STORAGE_KEY_SECONDS, String(appState.showSeconds));
     writeStorage(STORAGE_KEY_WEATHER, String(appState.showWeather));
+    writeStorage(STORAGE_KEY_TEMPERATURE_UNIT, appState.temperatureUnit);
     writeStorage(STORAGE_KEY_DATE, String(appState.showDate));
     writeStorage(STORAGE_KEY_LOCATION_META, String(appState.showLocationMeta));
     writeStorage(STORAGE_KEY_TIME_META, String(appState.showTimeMeta));
     applyDisplaySettings();
     updateRenderedTimes();
     if (appState.showWeather) {
-      refreshVisibleWeather(false);
+      refreshVisibleWeather(true);
     }
   }
 
@@ -179,6 +187,7 @@
     appState.use24Hour = false;
     appState.showSeconds = false;
     appState.showWeather = false;
+    appState.temperatureUnit = "fahrenheit";
     appState.showDate = false;
     appState.showLocationMeta = true;
     appState.showTimeMeta = true;
@@ -189,6 +198,7 @@
     writeStorage(STORAGE_KEY_FORMAT, "false");
     writeStorage(STORAGE_KEY_SECONDS, "false");
     writeStorage(STORAGE_KEY_WEATHER, "false");
+    writeStorage(STORAGE_KEY_TEMPERATURE_UNIT, "fahrenheit");
     writeStorage(STORAGE_KEY_DATE, "false");
     writeStorage(STORAGE_KEY_LOCATION_META, "true");
     writeStorage(STORAGE_KEY_TIME_META, "true");
@@ -701,7 +711,7 @@
   }
 
   function fetchWeatherForClock(clock, force) {
-    var key = clockKey(clock);
+    var key = weatherCacheKey(clock);
     var existingCache = appState.weatherCache[key];
     var existingRequest = appState.weatherRequests[key];
     var now = new Date().getTime();
@@ -753,7 +763,8 @@
       "&forecast_days=1" +
       "&timezone=" +
       encodeURIComponent(clock.timezone || DEFAULT_CLOCK.timezone) +
-      "&temperature_unit=fahrenheit";
+      "&temperature_unit=" +
+      encodeURIComponent(appState.temperatureUnit);
   }
 
   function parseWeatherResponse(data) {
@@ -785,6 +796,10 @@
     return String(Math.round(value)) + (unit || "");
   }
 
+  function weatherCacheKey(clock) {
+    return clockKey(clock) + "|" + appState.temperatureUnit;
+  }
+
   function applyWeatherToRows() {
     var rows = elements.clockList.getElementsByClassName("clock-row");
     var combinedClocks = getVisibleClocks();
@@ -796,7 +811,7 @@
 
     for (i = 0; i < rows.length; i += 1) {
       row = rows[i];
-      weatherData = appState.weatherCache[clockKey(combinedClocks[i])];
+      weatherData = appState.weatherCache[weatherCacheKey(combinedClocks[i])];
       placeholder = row.querySelector(".weather-placeholder");
       meta = row.querySelector(".weather-meta");
 
@@ -1105,6 +1120,7 @@
     elements.setting24Hour.checked = appState.use24Hour;
     elements.settingSeconds.checked = appState.showSeconds;
     elements.settingWeather.checked = appState.showWeather;
+    elements.settingTemperatureUnit.value = appState.temperatureUnit;
     elements.settingDate.checked = appState.showDate;
     elements.settingLocationMeta.checked = appState.showLocationMeta;
     elements.settingTimeMeta.checked = appState.showTimeMeta;
