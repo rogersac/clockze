@@ -136,6 +136,11 @@ input {
   vertical-align: middle;
 }
 
+.icon-button.is-active {
+  border-color: var(--accent-strong);
+  background: rgba(66, 167, 255, 0.18);
+}
+
 .modal-close-button {
   min-height: 42px;
   padding: 0 14px;
@@ -257,6 +262,10 @@ input {
   display: none;
 }
 
+.reorder-mode.swipe-delete-layout .clock-row .clock-col-actions {
+  display: block;
+}
+
 .clock-header,
 .clock-row {
   display: -webkit-box;
@@ -348,8 +357,8 @@ input {
 
 .clock-col-actions {
   -webkit-box-flex: 0;
-  -ms-flex: 0 0 90px;
-  flex: 0 0 90px;
+  -ms-flex: 0 0 124px;
+  flex: 0 0 124px;
   text-align: right;
 }
 
@@ -418,6 +427,63 @@ input {
   min-height: 44px;
   padding: 0 12px;
   color: var(--danger);
+}
+
+.reorder-controls,
+.reorder-note {
+  display: none;
+}
+
+.reorder-controls {
+  white-space: nowrap;
+}
+
+.reorder-button {
+  display: inline-block;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
+}
+
+.reorder-button + .reorder-button {
+  margin-left: 8px;
+}
+
+.reorder-button[disabled] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.reorder-note {
+  padding-top: 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.reorder-mode .remove-button {
+  display: none;
+}
+
+.reorder-mode .reorder-controls {
+  display: inline-block;
+}
+
+.reorder-mode .clock-row.is-default .reorder-controls {
+  display: none;
+}
+
+.reorder-mode .clock-row.is-default .reorder-note {
+  display: block;
+}
+
+.reorder-mode .swipe-delete-button {
+  display: none !important;
 }
 
 .swipe-delete-button {
@@ -656,6 +722,16 @@ input {
 
   .clock-col-actions {
     text-align: left;
+  }
+
+  .reorder-mode .clock-col-actions {
+    -ms-flex: 1 1 100%;
+    flex: 1 1 100%;
+    padding-top: 12px;
+  }
+
+  .reorder-mode .reorder-note {
+    padding-top: 10px;
   }
 }
 

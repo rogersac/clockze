@@ -33,6 +33,7 @@
     showDate: false,
     showLocationMeta: true,
     showTimeMeta: true,
+    isReorderMode: false,
     useSwipeLayout: false,
     formatterCache: {},
     weatherCache: {},
@@ -51,6 +52,7 @@
     clockList: document.getElementById("clock-list"),
     clockTemplate: document.getElementById("clock-row-template"),
     addCityButton: document.getElementById("add-city-button"),
+    reorderButton: document.getElementById("reorder-button"),
     settingsButton: document.getElementById("settings-button"),
     resetButton: document.getElementById("reset-button"),
     citySearch: document.getElementById("city-search"),
@@ -85,6 +87,7 @@
     syncSettingsInputs();
     applyDisplaySettings();
     elements.addCityButton.addEventListener("click", openAddCityModal, false);
+    elements.reorderButton.addEventListener("click", onReorderButtonClick, false);
     elements.settingsButton.addEventListener("click", openSettingsModal, false);
     elements.resetButton.addEventListener("click", onResetClick, false);
     elements.citySearch.addEventListener("input", onSearchInput, false);
@@ -191,6 +194,7 @@
     appState.showDate = false;
     appState.showLocationMeta = true;
     appState.showTimeMeta = true;
+    appState.isReorderMode = false;
     appState.formatterCache = {};
     appState.weatherCache = {};
     abortAllWeatherRequests();
@@ -208,6 +212,7 @@
     setSearchStatus("");
     syncSettingsInputs();
     applyDisplaySettings();
+    syncReorderMode();
     renderClocks();
     resolveDefaultClock();
   }
@@ -429,13 +434,18 @@
   function renderClocks() {
     var fragment = document.createDocumentFragment();
     var combinedClocks = getVisibleClocks();
+    var hasDefaultClock = shouldShowDefaultClock();
     var i;
     var row;
+    var isDefault;
+    var savedIndex;
 
     elements.clockList.innerHTML = "";
 
     for (i = 0; i < combinedClocks.length; i += 1) {
-      row = createClockRow(combinedClocks[i], i === 0);
+      isDefault = hasDefaultClock && i === 0;
+      savedIndex = isDefault ? -1 : i - (hasDefaultClock ? 1 : 0);
+      row = createClockRow(combinedClocks[i], isDefault, savedIndex);
       fragment.appendChild(row);
     }
 
@@ -446,12 +456,14 @@
     refreshVisibleWeather(false);
   }
 
-  function createClockRow(clock, isDefault) {
+  function createClockRow(clock, isDefault, savedIndex) {
     var row = elements.clockTemplate.content ?
       elements.clockTemplate.content.firstElementChild.cloneNode(true) :
       createFallbackTemplateClone();
     var removeButton = row.querySelector(".remove-button");
     var swipeDeleteButton = row.querySelector(".swipe-delete-button");
+    var moveUpButton = row.querySelector(".reorder-up");
+    var moveDownButton = row.querySelector(".reorder-down");
 
     row.setAttribute("data-timezone", clock.timezone);
 
@@ -462,6 +474,7 @@
       attachClockData(swipeDeleteButton, clock);
       removeButton.addEventListener("click", onRemoveClockClick, false);
       swipeDeleteButton.addEventListener("click", onRemoveClockClick, false);
+      configureReorderButtons(moveUpButton, moveDownButton, savedIndex);
     }
 
     row.querySelector(".location-main").textContent = clock.name;
@@ -488,10 +501,23 @@
       '<div class="clock-col clock-col-time"><div class="time-main"></div><div class="time-meta"></div></div>' +
       '<div class="clock-col clock-col-date"><div class="date-main"></div></div>' +
       '<div class="clock-col clock-col-weather weather-slot"><div class="weather-primary"><span class="weather-icon" aria-hidden="true">?</span><span class="weather-placeholder">--</span></div><div class="weather-meta">Temp / High / Low / Icon</div></div>' +
-      '<div class="clock-col clock-col-actions"><button class="remove-button" type="button">Remove</button></div>' +
+      '<div class="clock-col clock-col-actions"><button class="remove-button" type="button">Remove</button><div class="reorder-controls"><button class="reorder-button reorder-up" type="button" aria-label="Move clock up" title="Move up">▲</button><button class="reorder-button reorder-down" type="button" aria-label="Move clock down" title="Move down">▼</button></div><div class="reorder-note" aria-hidden="true">Pinned</div></div>' +
       '</div>' +
       '</article>';
     return wrapper.firstChild;
+  }
+
+  function configureReorderButtons(moveUpButton, moveDownButton, savedIndex) {
+    if (!moveUpButton || !moveDownButton || savedIndex < 0) {
+      return;
+    }
+
+    moveUpButton.setAttribute("data-clock-index", String(savedIndex));
+    moveDownButton.setAttribute("data-clock-index", String(savedIndex));
+    moveUpButton.disabled = savedIndex <= 0;
+    moveDownButton.disabled = savedIndex >= (appState.savedClocks.length - 1);
+    moveUpButton.addEventListener("click", onMoveClockUpClick, false);
+    moveDownButton.addEventListener("click", onMoveClockDownClick, false);
   }
 
   function onRemoveClockClick(event) {
@@ -522,13 +548,73 @@
     renderClocks();
   }
 
+  function onReorderButtonClick() {
+    setReorderMode(!appState.isReorderMode);
+  }
+
+  function setReorderMode(enabled) {
+    appState.isReorderMode = !!enabled;
+    closeAllSwipedRows();
+    syncReorderMode();
+  }
+
+  function syncReorderMode() {
+    if (appState.isReorderMode) {
+      addClass(elements.appShell, "reorder-mode");
+      addClass(elements.reorderButton, "is-active");
+      elements.reorderButton.setAttribute("aria-pressed", "true");
+      elements.reorderButton.setAttribute("title", "Done reordering");
+      elements.reorderButton.setAttribute("aria-label", "Done reordering");
+    } else {
+      removeClass(elements.appShell, "reorder-mode");
+      removeClass(elements.reorderButton, "is-active");
+      elements.reorderButton.setAttribute("aria-pressed", "false");
+      elements.reorderButton.setAttribute("title", "Reorder clocks");
+      elements.reorderButton.setAttribute("aria-label", "Reorder clocks");
+    }
+  }
+
+  function onMoveClockUpClick(event) {
+    moveSavedClockByOffset(readSavedClockIndex(event.currentTarget), -1);
+  }
+
+  function onMoveClockDownClick(event) {
+    moveSavedClockByOffset(readSavedClockIndex(event.currentTarget), 1);
+  }
+
+  function readSavedClockIndex(element) {
+    return parseInt(element.getAttribute("data-clock-index"), 10);
+  }
+
+  function moveSavedClockByOffset(index, offset) {
+    var targetIndex = index + offset;
+    var movedClock;
+
+    if (isNaN(index) || isNaN(targetIndex)) {
+      return;
+    }
+
+    if (index < 0 || index >= appState.savedClocks.length) {
+      return;
+    }
+
+    if (targetIndex < 0 || targetIndex >= appState.savedClocks.length) {
+      return;
+    }
+
+    movedClock = appState.savedClocks.splice(index, 1)[0];
+    appState.savedClocks.splice(targetIndex, 0, movedClock);
+    persistSavedClocks();
+    renderClocks();
+  }
+
   function bindSwipeRows() {
     var rows;
     var i;
 
     appState.activeSwipedRow = null;
 
-    if (!appState.useSwipeLayout) {
+    if (!appState.useSwipeLayout || appState.isReorderMode) {
       return;
     }
 
@@ -560,7 +646,7 @@
     rowInner.addEventListener("touchstart", function (event) {
       var touch;
 
-      if (!appState.useSwipeLayout || !event.touches || !event.touches.length) {
+      if (!appState.useSwipeLayout || appState.isReorderMode || !event.touches || !event.touches.length) {
         return;
       }
 
@@ -1300,6 +1386,9 @@
     var key = event.key || event.keyCode;
 
     if (!appState.activeModalName) {
+      if ((key === "Escape" || key === "Esc" || key === 27) && appState.isReorderMode) {
+        setReorderMode(false);
+      }
       return;
     }
 

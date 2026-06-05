@@ -32,6 +32,27 @@
             </button>
 
             <button
+              id="reorder-button"
+              class="ghost-button icon-button"
+              type="button"
+              aria-label="Reorder clocks"
+              aria-pressed="false"
+              title="Reorder clocks"
+            >
+              <svg class="icon-svg" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+                <path
+                  d="M8 5v12.5M8 5 5.5 7.5M8 5l2.5 2.5M16 19V6.5M16 19l-2.5-2.5M16 19l2.5-2.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.1"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                ></path>
+              </svg>
+              <span class="sr-only">Reorder clocks</span>
+            </button>
+
+            <button
               id="settings-button"
               class="ghost-button icon-button"
               type="button"
@@ -195,6 +216,11 @@
 
         <div class="clock-col clock-col-actions">
           <button class="remove-button" type="button">Remove</button>
+          <div class="reorder-controls">
+            <button class="reorder-button reorder-up" type="button" aria-label="Move clock up" title="Move up">▲</button>
+            <button class="reorder-button reorder-down" type="button" aria-label="Move clock down" title="Move down">▼</button>
+          </div>
+          <div class="reorder-note" aria-hidden="true">Pinned</div>
         </div>
       </div>
     </article>
