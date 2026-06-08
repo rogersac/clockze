@@ -194,6 +194,46 @@
     </div>
   </div>
 
+  <div
+    id="weather-modal"
+    class="weather-modal is-hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="weather-modal-title"
+    aria-hidden="true"
+  >
+    <div class="weather-modal-shell">
+      <button id="weather-modal-close" class="weather-modal-close" type="button" aria-label="Close weather forecast">×</button>
+
+      <div class="weather-modal-content">
+        <header class="weather-modal-hero">
+          <div class="weather-modal-location">
+            <div id="weather-modal-title" class="weather-modal-city">Weather</div>
+            <div id="weather-modal-location-meta" class="weather-modal-meta"></div>
+          </div>
+
+          <div class="weather-modal-current-block">
+            <div class="weather-modal-current-main">
+              <span id="weather-modal-current-icon" class="weather-modal-current-icon" aria-hidden="true">?</span>
+              <span id="weather-modal-current-temp" class="weather-modal-current-temp">--</span>
+            </div>
+            <div id="weather-modal-current-label" class="weather-modal-current-label">Loading weather</div>
+          </div>
+        </header>
+
+        <section class="weather-detail-panel" aria-labelledby="weather-hourly-title">
+          <h2 id="weather-hourly-title" class="weather-detail-heading">24-Hour Forecast</h2>
+          <div id="weather-hourly-list" class="weather-hourly-list"></div>
+        </section>
+
+        <section class="weather-detail-panel" aria-labelledby="weather-daily-title">
+          <h2 id="weather-daily-title" class="weather-detail-heading">7-Day Forecast</h2>
+          <div id="weather-daily-list" class="weather-daily-list"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
   <template id="clock-row-template">
     <article class="clock-row">
       <button class="swipe-delete-button" type="button" aria-label="Delete clock">
@@ -217,11 +257,13 @@
         </div>
 
         <div class="clock-col clock-col-weather weather-slot">
-          <div class="weather-primary">
-            <span class="weather-icon" aria-hidden="true">?</span>
-            <span class="weather-placeholder">--</span>
-          </div>
-          <div class="weather-meta">Temp / High / Low / Icon</div>
+          <button class="weather-open-button" type="button" aria-label="Open weather forecast">
+            <div class="weather-primary">
+              <span class="weather-icon" aria-hidden="true">?</span>
+              <span class="weather-placeholder">--</span>
+            </div>
+            <div class="weather-meta">Temp / High / Low / Icon</div>
+          </button>
         </div>
 
         <div class="clock-col clock-col-actions">

@@ -38,13 +38,16 @@
     formatterCache: {},
     weatherCache: {},
     weatherRequests: {},
+    weatherDetailCache: {},
+    weatherDetailRequests: {},
     tickTimer: null,
     searchTimer: null,
     searchRequest: null,
     reverseGeocodeRequest: null,
     lastFocusedElement: null,
     activeSwipedRow: null,
-    activeModalName: ""
+    activeModalName: "",
+    activeWeatherClock: null
   };
 
   var elements = {
@@ -63,6 +66,15 @@
     addCityClose: document.getElementById("add-city-close"),
     settingsModal: document.getElementById("settings-modal"),
     settingsClose: document.getElementById("settings-close"),
+    weatherModal: document.getElementById("weather-modal"),
+    weatherModalClose: document.getElementById("weather-modal-close"),
+    weatherModalTitle: document.getElementById("weather-modal-title"),
+    weatherModalLocationMeta: document.getElementById("weather-modal-location-meta"),
+    weatherModalCurrentIcon: document.getElementById("weather-modal-current-icon"),
+    weatherModalCurrentTemp: document.getElementById("weather-modal-current-temp"),
+    weatherModalCurrentLabel: document.getElementById("weather-modal-current-label"),
+    weatherHourlyList: document.getElementById("weather-hourly-list"),
+    weatherDailyList: document.getElementById("weather-daily-list"),
     setting24Hour: document.getElementById("setting-24-hour"),
     settingSeconds: document.getElementById("setting-seconds"),
     settingWeather: document.getElementById("setting-weather"),
@@ -100,6 +112,7 @@
     elements.settingTimeMeta.addEventListener("change", onSettingsChange, false);
     elements.addCityClose.addEventListener("click", closeActiveModal, false);
     elements.settingsClose.addEventListener("click", closeSettingsModal, false);
+    elements.weatherModalClose.addEventListener("click", closeWeatherModal, false);
     elements.modalBackdrop.addEventListener("click", closeActiveModal, false);
     document.addEventListener("keydown", onDocumentKeyDown, false);
     window.addEventListener("resize", onWindowResize, false);
@@ -177,6 +190,10 @@
     if (appState.showWeather) {
       refreshVisibleWeather(true);
     }
+    if (appState.activeModalName === "weather" && appState.activeWeatherClock) {
+      renderWeatherModalLoading(appState.activeWeatherClock);
+      fetchWeatherDetailsForClock(appState.activeWeatherClock, true);
+    }
   }
 
   function onResetClick() {
@@ -197,7 +214,10 @@
     appState.isReorderMode = false;
     appState.formatterCache = {};
     appState.weatherCache = {};
+    appState.weatherDetailCache = {};
+    appState.activeWeatherClock = null;
     abortAllWeatherRequests();
+    abortAllWeatherDetailRequests();
     writeStorage(STORAGE_KEY_CLOCKS, JSON.stringify([]));
     writeStorage(STORAGE_KEY_FORMAT, "false");
     writeStorage(STORAGE_KEY_SECONDS, "false");
@@ -211,6 +231,7 @@
     elements.citySearch.value = "";
     setSearchStatus("");
     syncSettingsInputs();
+    closeWeatherModal(true);
     applyDisplaySettings();
     syncReorderMode();
     renderClocks();
@@ -464,8 +485,13 @@
     var swipeDeleteButton = row.querySelector(".swipe-delete-button");
     var moveUpButton = row.querySelector(".reorder-up");
     var moveDownButton = row.querySelector(".reorder-down");
+    var weatherOpenButton = row.querySelector(".weather-open-button");
 
     row.setAttribute("data-timezone", clock.timezone);
+    attachClockData(weatherOpenButton, clock);
+    weatherOpenButton.setAttribute("title", "Open weather forecast for " + clock.name);
+    weatherOpenButton.setAttribute("aria-label", "Open weather forecast for " + clock.name);
+    weatherOpenButton.addEventListener("click", onWeatherCellClick, false);
 
     if (isDefault) {
       configureDefaultClockButton(row, removeButton, swipeDeleteButton, clock);
@@ -500,7 +526,7 @@
       '<div class="clock-col clock-col-location"><div class="location-main"></div><div class="location-meta"></div></div>' +
       '<div class="clock-col clock-col-time"><div class="time-main"></div><div class="time-meta"></div></div>' +
       '<div class="clock-col clock-col-date"><div class="date-main"></div></div>' +
-      '<div class="clock-col clock-col-weather weather-slot"><div class="weather-primary"><span class="weather-icon" aria-hidden="true">?</span><span class="weather-placeholder">--</span></div><div class="weather-meta">Temp / High / Low / Icon</div></div>' +
+      '<div class="clock-col clock-col-weather weather-slot"><button class="weather-open-button" type="button" aria-label="Open weather forecast"><div class="weather-primary"><span class="weather-icon" aria-hidden="true">?</span><span class="weather-placeholder">--</span></div><div class="weather-meta">Temp / High / Low / Icon</div></button></div>' +
       '<div class="clock-col clock-col-actions"><button class="remove-button" type="button">Remove</button><div class="reorder-controls"><button class="reorder-button reorder-up" type="button" aria-label="Move clock up" title="Move up">▲</button><button class="reorder-button reorder-down" type="button" aria-label="Move clock down" title="Move down">▼</button></div><div class="reorder-note" aria-hidden="true">Pinned</div></div>' +
       '</div>' +
       '</article>';
@@ -606,6 +632,16 @@
     appState.savedClocks.splice(targetIndex, 0, movedClock);
     persistSavedClocks();
     renderClocks();
+  }
+
+  function onWeatherCellClick(event) {
+    var clock = readClockData(event.currentTarget);
+
+    if (!clock) {
+      return;
+    }
+
+    openWeatherModal(clock);
   }
 
   function bindSwipeRows() {
@@ -885,10 +921,10 @@
     };
   }
 
-  function getWeatherVisual(weatherCode) {
+  function getWeatherVisual(weatherCode, isDay) {
     switch (weatherCode) {
       case 0:
-        return { icon: "☀", label: "Clear" };
+        return { icon: isDay === 0 ? "☾" : "☀", label: isDay === 0 ? "Clear night" : "Clear" };
       case 1:
         return { icon: "⛅", label: "Mainly clear" };
       case 2:
@@ -974,6 +1010,386 @@
         meta.textContent = "Loading weather";
       }
     }
+  }
+
+  // Detailed weather data is fetched on demand when a row weather cell is opened.
+  function openWeatherModal(clock) {
+    appState.activeWeatherClock = normalizeClock(clock);
+    closeAllSwipedRows();
+    appState.lastFocusedElement = document.activeElement;
+    appState.activeModalName = "weather";
+    elements.modalBackdrop.className = "modal-backdrop";
+    elements.weatherModal.className = "weather-modal";
+    elements.weatherModal.setAttribute("aria-hidden", "false");
+    renderWeatherModalLoading(appState.activeWeatherClock);
+    fetchWeatherDetailsForClock(appState.activeWeatherClock, false);
+    setTimeout(function () {
+      if (elements.weatherModalClose && typeof elements.weatherModalClose.focus === "function") {
+        elements.weatherModalClose.focus();
+      }
+    }, 0);
+  }
+
+  function closeWeatherModal(skipFocusRestore) {
+    appState.activeModalName = appState.activeModalName === "weather" ? "" : appState.activeModalName;
+    appState.activeWeatherClock = null;
+    elements.modalBackdrop.className = "modal-backdrop is-hidden";
+    elements.weatherModal.className = "weather-modal is-hidden";
+    elements.weatherModal.setAttribute("aria-hidden", "true");
+
+    if (!skipFocusRestore && appState.lastFocusedElement && typeof appState.lastFocusedElement.focus === "function") {
+      appState.lastFocusedElement.focus();
+    }
+  }
+
+  function fetchWeatherDetailsForClock(clock, force) {
+    var key = weatherCacheKey(clock);
+    var existingCache = appState.weatherDetailCache[key];
+    var existingRequest = appState.weatherDetailRequests[key];
+    var now = new Date().getTime();
+    var url;
+
+    if (!force && existingCache && existingCache.status === "ready" && (now - existingCache.fetchedAt) < WEATHER_CACHE_MS) {
+      renderWeatherModalFromCache(clock, existingCache);
+      return;
+    }
+
+    if (existingRequest) {
+      return;
+    }
+
+    if (existingCache && existingCache.status === "ready") {
+      renderWeatherModalFromCache(clock, existingCache);
+    }
+
+    appState.weatherDetailCache[key] = {
+      status: "loading",
+      fetchedAt: now
+    };
+
+    url = buildWeatherDetailUrl(clock);
+    appState.weatherDetailRequests[key] = createJsonRequest(url, function (error, data) {
+      delete appState.weatherDetailRequests[key];
+
+      if (error) {
+        appState.weatherDetailCache[key] = {
+          status: "error",
+          fetchedAt: new Date().getTime(),
+          message: "Detailed forecast is unavailable right now."
+        };
+        renderWeatherModalFromCache(clock, appState.weatherDetailCache[key]);
+        return;
+      }
+
+      appState.weatherDetailCache[key] = parseWeatherDetailResponse(data);
+      renderWeatherModalFromCache(clock, appState.weatherDetailCache[key]);
+    });
+  }
+
+  function buildWeatherDetailUrl(clock) {
+    return "https://api.open-meteo.com/v1/forecast?latitude=" +
+      encodeURIComponent(String(clock.latitude)) +
+      "&longitude=" +
+      encodeURIComponent(String(clock.longitude)) +
+      "&current=temperature_2m,weather_code,is_day" +
+      "&hourly=temperature_2m,weather_code,is_day" +
+      "&forecast_hours=24" +
+      "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+      "&forecast_days=7" +
+      "&timezone=" +
+      encodeURIComponent(clock.timezone || DEFAULT_CLOCK.timezone) +
+      "&temperature_unit=" +
+      encodeURIComponent(appState.temperatureUnit);
+  }
+
+  function parseWeatherDetailResponse(data) {
+    var current = data && data.current ? data.current : null;
+    var currentUnits = data && data.current_units ? data.current_units : null;
+    var hourly = data && data.hourly ? data.hourly : null;
+    var hourlyUnits = data && data.hourly_units ? data.hourly_units : null;
+    var daily = data && data.daily ? data.daily : null;
+    var dailyUnits = data && data.daily_units ? data.daily_units : null;
+    var currentVisual;
+    var hourlyItems = [];
+    var dailyItems = [];
+    var i;
+
+    if (!current || typeof current.temperature_2m !== "number" || !hourly || !daily) {
+      return {
+        status: "error",
+        fetchedAt: new Date().getTime(),
+        message: "Detailed forecast is unavailable right now."
+      };
+    }
+
+    currentVisual = getWeatherVisual(current.weather_code, current.is_day);
+
+    if (hourly.time && hourly.temperature_2m && hourly.weather_code) {
+      for (i = 0; i < hourly.time.length && i < 24; i += 1) {
+        hourlyItems.push({
+          timeLabel: formatForecastHourLabel(hourly.time[i], i),
+          icon: getWeatherVisual(hourly.weather_code[i], hourly.is_day ? hourly.is_day[i] : null).icon,
+          label: getWeatherVisual(hourly.weather_code[i], hourly.is_day ? hourly.is_day[i] : null).label,
+          temperatureText: formatTemperature(hourly.temperature_2m[i], hourlyUnits ? hourlyUnits.temperature_2m : "")
+        });
+      }
+    }
+
+    if (daily.time && daily.temperature_2m_max && daily.temperature_2m_min && daily.weather_code) {
+      for (i = 0; i < daily.time.length && i < 7; i += 1) {
+        dailyItems.push({
+          dayLabel: formatForecastDayLabel(daily.time[i], i),
+          icon: getWeatherVisual(daily.weather_code[i]).icon,
+          label: getWeatherVisual(daily.weather_code[i]).label,
+          highText: formatTemperature(daily.temperature_2m_max[i], dailyUnits ? dailyUnits.temperature_2m_max : ""),
+          lowText: formatTemperature(daily.temperature_2m_min[i], dailyUnits ? dailyUnits.temperature_2m_min : ""),
+          precipitationText: formatPrecipitationChance(daily.precipitation_probability_max ? daily.precipitation_probability_max[i] : null)
+        });
+      }
+    }
+
+    return {
+      status: "ready",
+      fetchedAt: new Date().getTime(),
+      currentIcon: currentVisual.icon,
+      currentLabel: currentVisual.label,
+      currentTempText: formatTemperature(current.temperature_2m, currentUnits ? currentUnits.temperature_2m : ""),
+      hourlyItems: hourlyItems,
+      dailyItems: dailyItems
+    };
+  }
+
+  function renderWeatherModalFromCache(clock, cacheEntry) {
+    if (appState.activeModalName !== "weather" || !appState.activeWeatherClock || clockKey(appState.activeWeatherClock) !== clockKey(clock)) {
+      return;
+    }
+
+    if (!cacheEntry || cacheEntry.status === "loading") {
+      renderWeatherModalLoading(clock);
+      return;
+    }
+
+    if (cacheEntry.status === "error") {
+      renderWeatherModalError(clock, cacheEntry.message || "Detailed forecast is unavailable right now.");
+      return;
+    }
+
+    renderWeatherModalReady(clock, cacheEntry);
+  }
+
+  function renderWeatherModalLoading(clock) {
+    populateWeatherModalHeader(clock, "…", "...", "Loading weather");
+    renderWeatherHourlyItems([]);
+    renderWeatherDailyItems([]);
+    setWeatherModalMessage(elements.weatherHourlyList, "Loading 24-hour forecast...");
+    setWeatherModalMessage(elements.weatherDailyList, "Loading 7-day forecast...");
+  }
+
+  function renderWeatherModalError(clock, message) {
+    populateWeatherModalHeader(clock, "!", "--", message);
+    renderWeatherHourlyItems([]);
+    renderWeatherDailyItems([]);
+    setWeatherModalMessage(elements.weatherHourlyList, message);
+    setWeatherModalMessage(elements.weatherDailyList, message);
+  }
+
+  function renderWeatherModalReady(clock, detail) {
+    populateWeatherModalHeader(clock, detail.currentIcon, detail.currentTempText, detail.currentLabel);
+    renderWeatherHourlyItems(detail.hourlyItems);
+    renderWeatherDailyItems(detail.dailyItems);
+  }
+
+  function populateWeatherModalHeader(clock, iconText, currentTempText, currentLabel) {
+    elements.weatherModalTitle.textContent = clock.name;
+    elements.weatherModalLocationMeta.textContent = buildLocationMeta(clock);
+    elements.weatherModalCurrentIcon.textContent = iconText;
+    elements.weatherModalCurrentTemp.textContent = currentTempText;
+    elements.weatherModalCurrentLabel.textContent = currentLabel;
+  }
+
+  function renderWeatherHourlyItems(items) {
+    var fragment = document.createDocumentFragment();
+    var item;
+    var card;
+    var time;
+    var icon;
+    var label;
+    var temp;
+    var i;
+
+    elements.weatherHourlyList.innerHTML = "";
+
+    for (i = 0; i < items.length; i += 1) {
+      item = items[i];
+      card = document.createElement("div");
+      card.className = "weather-hourly-item";
+
+      time = document.createElement("span");
+      time.className = "weather-hourly-time";
+      time.textContent = item.timeLabel;
+
+      icon = document.createElement("span");
+      icon.className = "weather-hourly-icon";
+      icon.textContent = item.icon;
+
+      label = document.createElement("span");
+      label.className = "weather-hourly-label";
+      label.textContent = item.label;
+
+      temp = document.createElement("span");
+      temp.className = "weather-hourly-temp";
+      temp.textContent = item.temperatureText;
+
+      card.appendChild(time);
+      card.appendChild(icon);
+      card.appendChild(label);
+      card.appendChild(temp);
+      fragment.appendChild(card);
+    }
+
+    elements.weatherHourlyList.appendChild(fragment);
+  }
+
+  function renderWeatherDailyItems(items) {
+    var fragment = document.createDocumentFragment();
+    var item;
+    var row;
+    var day;
+    var visual;
+    var icon;
+    var label;
+    var precip;
+    var temps;
+    var low;
+    var high;
+    var i;
+
+    elements.weatherDailyList.innerHTML = "";
+
+    for (i = 0; i < items.length; i += 1) {
+      item = items[i];
+      row = document.createElement("div");
+      row.className = "weather-daily-row";
+
+      day = document.createElement("div");
+      day.className = "weather-daily-day";
+      day.textContent = item.dayLabel;
+
+      visual = document.createElement("div");
+      visual.className = "weather-daily-visual";
+
+      icon = document.createElement("span");
+      icon.className = "weather-daily-icon";
+      icon.textContent = item.icon;
+
+      label = document.createElement("span");
+      label.className = "weather-daily-label";
+      label.textContent = item.label;
+
+      visual.appendChild(icon);
+      visual.appendChild(label);
+
+      if (item.precipitationText) {
+        precip = document.createElement("span");
+        precip.className = "weather-daily-precip";
+        precip.textContent = item.precipitationText;
+        visual.appendChild(precip);
+      }
+
+      temps = document.createElement("div");
+      temps.className = "weather-daily-temps";
+
+      low = document.createElement("span");
+      low.className = "weather-daily-low";
+      low.textContent = item.lowText;
+
+      high = document.createElement("span");
+      high.className = "weather-daily-high";
+      high.textContent = item.highText;
+
+      temps.appendChild(low);
+      temps.appendChild(high);
+
+      row.appendChild(day);
+      row.appendChild(visual);
+      row.appendChild(temps);
+      fragment.appendChild(row);
+    }
+
+    elements.weatherDailyList.appendChild(fragment);
+  }
+
+  function setWeatherModalMessage(container, message) {
+    var node = document.createElement("div");
+    node.className = "weather-modal-message";
+    node.textContent = message;
+    container.innerHTML = "";
+    container.appendChild(node);
+  }
+
+  function formatForecastHourLabel(isoString, index) {
+    var parts = parseIsoDateTimeParts(isoString);
+    var hour = parts.hour;
+    var suffix;
+    var hour12;
+
+    if (index === 0) {
+      return "Now";
+    }
+
+    if (appState.use24Hour) {
+      return padNumber(hour) + ":00";
+    }
+
+    suffix = hour >= 12 ? "PM" : "AM";
+    hour12 = hour % 12;
+    if (hour12 === 0) {
+      hour12 = 12;
+    }
+    return String(hour12) + " " + suffix;
+  }
+
+  function formatForecastDayLabel(isoDate, index) {
+    var parts;
+    var date;
+    var formatter;
+
+    if (index === 0) {
+      return "Today";
+    }
+
+    parts = parseIsoDateParts(isoDate);
+    date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12, 0, 0));
+    formatter = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
+    return formatter.format(date);
+  }
+
+  function formatPrecipitationChance(value) {
+    if (typeof value !== "number" || isNaN(value)) {
+      return "";
+    }
+
+    return String(Math.round(value)) + "%";
+  }
+
+  function parseIsoDateTimeParts(value) {
+    var safeValue = String(value || "");
+    var datePart = safeValue.split("T")[0];
+    var timePart = safeValue.split("T")[1] || "00:00";
+    var datePieces = datePart.split("-");
+    var timePieces = timePart.split(":");
+
+    return {
+      year: parseInt(datePieces[0], 10) || 0,
+      month: parseInt(datePieces[1], 10) || 1,
+      day: parseInt(datePieces[2], 10) || 1,
+      hour: parseInt(timePieces[0], 10) || 0,
+      minute: parseInt(timePieces[1], 10) || 0
+    };
+  }
+
+  function parseIsoDateParts(value) {
+    return parseIsoDateTimeParts(String(value || "") + "T00:00");
   }
 
   function formatClockTime(date, timeZone, use24Hour) {
@@ -1372,6 +1788,11 @@
   }
 
   function closeActiveModal() {
+    if (appState.activeModalName === "weather") {
+      closeWeatherModal();
+      return;
+    }
+
     if (appState.activeModalName === "settings") {
       closeSettingsModal();
       return;
@@ -1473,6 +1894,18 @@
     }
 
     appState.weatherRequests = {};
+  }
+
+  function abortAllWeatherDetailRequests() {
+    var key;
+
+    for (key in appState.weatherDetailRequests) {
+      if (Object.prototype.hasOwnProperty.call(appState.weatherDetailRequests, key)) {
+        abortRequest(appState.weatherDetailRequests[key]);
+      }
+    }
+
+    appState.weatherDetailRequests = {};
   }
 
   function getBrowserTimeZone() {
