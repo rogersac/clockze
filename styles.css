@@ -22,6 +22,7 @@ html,
 body {
   margin: 0;
   padding: 0;
+  height: 100%;
   min-height: 100%;
   background:
     radial-gradient(circle at top left, rgba(66, 167, 255, 0.14), transparent 32%),
@@ -31,7 +32,9 @@ body {
 }
 
 body {
+  height: auto;
   min-height: 100vh;
+  min-height: -webkit-fill-available;
 }
 
 button,
@@ -40,9 +43,19 @@ input {
 }
 
 .app-shell {
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px 16px 32px;
+  padding-top: calc(20px + env(safe-area-inset-top));
+  padding-right: calc(16px + env(safe-area-inset-right));
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  padding-left: calc(16px + env(safe-area-inset-left));
+  padding-top: calc(20px + constant(safe-area-inset-top));
+  padding-right: calc(16px + constant(safe-area-inset-right));
+  padding-bottom: calc(32px + constant(safe-area-inset-bottom));
+  padding-left: calc(16px + constant(safe-area-inset-left));
 }
 
 .section-heading h2 {

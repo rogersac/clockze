@@ -84,5 +84,6 @@ http://localhost:8000
 
 - Settings are remembered in `localStorage`.
 - Saved clocks are remembered in `localStorage`.
-- Weather data is not implemented yet, but the UI and data layout leave space for it.
+- Current weather, daily condition, and high/low use the Open-Meteo Forecast API when enabled.
 - Older Safari support is a design goal, so the JavaScript avoids modules, `async/await`, optional chaining, and similar newer syntax.
+- A browser tab cannot force fullscreen automatically. On iPad and iPhone, use `Add to Home Screen` to launch the app in standalone fullscreen mode.
